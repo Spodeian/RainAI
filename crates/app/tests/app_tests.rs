@@ -132,3 +132,19 @@ fn test_template_app_save_populates_both_keys() {
     let loaded = load_state_multi_tier(Some(&storage)).expect("Should restore state successfully");
     assert_eq!(loaded.collection.total_count(), 4);
 }
+
+#[test]
+fn test_template_app_audio_prebuffering_and_radar_defaults() {
+    let mut app = TemplateApp::default();
+    assert_eq!(app.rain_view.dragged_source, None);
+    assert!(!app.rain_view.enable_gpu_radar);
+    assert_eq!(app.rain_view.export_duration, 30.0);
+
+    // Verify ensure_audio_engine initializes audio engine without requiring is_playing = true
+    app.ensure_audio_engine();
+    assert!(app.audio_state.is_some(), "Audio state must be initialized for pre-buffering");
+
+    app.sync_audio_engine();
+    assert!(app.audio_state.is_some());
+}
+

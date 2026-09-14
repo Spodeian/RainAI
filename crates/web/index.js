@@ -1,4 +1,18 @@
 // ============================================================================
+// WebAudio Autoplay Policy Unlocking (Safari / iOS & Mobile Chrome)
+// ============================================================================
+(function () {
+  const unlockAudio = () => {
+    if (window.__rainAudioContext && window.__rainAudioContext.state === 'suspended') {
+      window.__rainAudioContext.resume().catch(() => {});
+    }
+  };
+  ['click', 'touchstart', 'pointerdown', 'keydown'].forEach((evt) => {
+    window.addEventListener(evt, unlockAudio, { passive: true });
+  });
+})();
+
+// ============================================================================
 // Service Worker Registration for Offline PWA Capabilities
 // ============================================================================
 if ('serviceWorker' in navigator) {

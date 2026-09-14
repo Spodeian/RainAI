@@ -284,6 +284,17 @@ pub fn save_state_multi_tier(key: &str, json_str: &str) -> Result<StorageBackend
     Ok(StorageBackend::MemoryOnly)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+pub fn resolve_desktop_export_path(filename: &str) -> std::path::PathBuf {
+    if let Ok(profile) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")) {
+        let downloads = std::path::Path::new(&profile).join("Downloads");
+        if downloads.is_dir() {
+            return downloads.join(filename);
+        }
+    }
+    std::path::PathBuf::from(filename)
+}
+
 /// Trigger client-side text file download via Blob URL
 pub fn trigger_text_download(filename: &str, content: &str, mime_type: &str) {
     #[cfg(target_arch = "wasm32")]
@@ -314,9 +325,10 @@ pub fn trigger_text_download(filename: &str, content: &str, mime_type: &str) {
     #[cfg(not(target_arch = "wasm32"))]
     {
         let _ = mime_type;
-        match std::fs::write(filename, content) {
-            Ok(()) => info!("Successfully wrote local file: {}", filename),
-            Err(e) => error!("Failed to write export file '{}': {}", filename, e),
+        let path = resolve_desktop_export_path(filename);
+        match std::fs::write(&path, content) {
+            Ok(()) => info!("Successfully wrote local file: {}", path.display()),
+            Err(e) => error!("Failed to write export file '{}': {}", path.display(), e),
         }
     }
 }
@@ -352,9 +364,10 @@ pub fn trigger_binary_download(filename: &str, bytes: &[u8], mime_type: &str) {
     #[cfg(not(target_arch = "wasm32"))]
     {
         let _ = mime_type;
-        match std::fs::write(filename, bytes) {
-            Ok(()) => info!("Successfully exported binary file: {}", filename),
-            Err(e) => error!("Failed to write binary export file '{}': {}", filename, e),
+        let path = resolve_desktop_export_path(filename);
+        match std::fs::write(&path, bytes) {
+            Ok(()) => info!("Successfully exported binary file: {}", path.display()),
+            Err(e) => error!("Failed to write binary export file '{}': {}", path.display(), e),
         }
     }
 }

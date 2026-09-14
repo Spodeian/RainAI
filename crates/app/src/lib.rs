@@ -7,6 +7,11 @@ pub mod storage_manager;
 pub use components::*;
 pub use storage_manager::*;
 
+use audio::SharedAudioState;
+#[cfg(not(target_arch = "wasm32"))]
+use audio::DesktopAudioEngine;
+#[cfg(target_arch = "wasm32")]
+use audio::WebAudioEngine;
 use eframe::egui;
 use shared::{
     AppState, Priority, ThemeMode, export_to_compressed_bson, export_to_csv, export_to_json,
@@ -55,6 +60,12 @@ impl ExportFormat {
 
 pub struct TemplateApp {
     pub state: AppState,
+    pub rain_view: RainView,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub desktop_audio: Option<DesktopAudioEngine>,
+    #[cfg(target_arch = "wasm32")]
+    pub web_audio: Option<WebAudioEngine>,
+    pub audio_state: Option<SharedAudioState>,
     pub current_theme: Option<ThemeMode>,
     pub show_reset_dialog: bool,
     pub show_help_dialog: bool,
@@ -82,6 +93,12 @@ impl Default for TemplateApp {
     fn default() -> Self {
         Self {
             state: AppState::default(),
+            rain_view: RainView::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            desktop_audio: None,
+            #[cfg(target_arch = "wasm32")]
+            web_audio: None,
+            audio_state: None,
             current_theme: None,
             show_reset_dialog: false,
             show_help_dialog: false,
@@ -111,10 +128,33 @@ impl TemplateApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         info!("Initializing Serverless & Desktop Template App...");
 
-        let state = load_state_multi_tier(cc.storage).unwrap_or_else(|| {
+        #[allow(unused_mut)]
+        let mut state = load_state_multi_tier(cc.storage).unwrap_or_else(|| {
             warn!("No saved state found in storage, initializing fresh defaults.");
             AppState::default()
         });
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            if let Some(win) = web_sys::window() {
+                if let Ok(hash) = win.location().hash() {
+                    let hash = hash.trim_start_matches('#');
+                    let token = if let Some(stripped) = hash.strip_prefix("preset=") {
+                        stripped
+                    } else if let Some(stripped) = hash.strip_prefix("token=") {
+                        stripped
+                    } else {
+                        hash
+                    };
+                    if !token.is_empty() {
+                        if let Ok(preset) = shared::preset::WeatherPreset::from_shareable_url_hash(token) {
+                            info!("Restored shared preset '{}' from URL hash", preset.name);
+                            state.rain = preset.state;
+                        }
+                    }
+                }
+            }
+        }
 
         Self {
             state,
@@ -260,6 +300,59 @@ impl TemplateApp {
             }
         }
     }
+
+    /// Ensures that the background audio engine is initialized so circular ring buffer
+    /// pre-buffering primes to 100ms capacity immediately on application startup.
+    pub fn ensure_audio_engine(&mut self) {
+        if self.audio_state.is_none() {
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                match DesktopAudioEngine::start(self.state.rain.clone(), self.rain_view.decode_mode) {
+                    Ok(engine) => {
+                        self.audio_state = Some(engine.state.clone());
+                        self.desktop_audio = Some(engine);
+                    }
+                    Err(e) => {
+                        error!("Failed to initialize DesktopAudioEngine: {e}");
+                    }
+                }
+            }
+            #[cfg(target_arch = "wasm32")]
+            {
+                match WebAudioEngine::start(self.state.rain.clone(), self.rain_view.decode_mode) {
+                    Ok(engine) => {
+                        self.audio_state = Some(engine.state.clone());
+                        self.web_audio = Some(engine);
+                    }
+                    Err(e) => {
+                        error!("Failed to initialize WebAudioEngine: {e}");
+                    }
+                }
+            }
+        }
+    }
+
+    /// Synchronizes the real-time audio playback engine with UI parameter changes,
+    /// pre-buffering audio ahead of time and updating telemetry.
+    pub fn sync_audio_engine(&mut self) {
+        // Primes pre-buffering immediately on startup across desktop and web
+        self.ensure_audio_engine();
+
+        // 3. Keep audio engine parameters and telemetry updated continuously
+        if let Some(ref audio_state) = self.audio_state {
+            audio_state.update_rain(&self.state.rain);
+            audio_state.set_decode_mode(self.rain_view.decode_mode);
+            audio_state.set_orientation(self.rain_view.listener_yaw, 0.0, 0.0);
+            self.state.rain.telemetry = audio_state.get_telemetry();
+
+            #[cfg(target_arch = "wasm32")]
+            if self.state.rain.is_playing {
+                if let Some(ref engine) = self.web_audio {
+                    let _ = engine.resume();
+                }
+            }
+        }
+    }
 }
 
 impl eframe::App for TemplateApp {
@@ -287,6 +380,7 @@ impl eframe::App for TemplateApp {
             ui.spacing_mut().button_padding = egui::vec2(12.0, 8.0);
         }
         self.handle_keyboard_shortcuts(ui.ctx());
+        self.sync_audio_engine();
 
         // Periodic diagnostics poll (every 2 seconds)
         let cur_time = ui.input(|i| i.time);
@@ -302,11 +396,26 @@ impl eframe::App for TemplateApp {
         components::navbar::render_navbar(self, ui, &constraints);
 
         egui::CentralPanel::default().show(ui, |ui| {
-            components::item_list::render_summary_cards(self, ui, &constraints);
-            ui.add_space(10.0);
-            components::item_list::render_new_item_form(self, ui, &constraints);
-            ui.add_space(10.0);
-            components::item_list::render_item_list(self, ui, &constraints);
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                // RainAI Soundscape Studio
+                ui.group(|ui| {
+                    ui.heading("🌧 RainAI Neural Spatial Soundscape Studio");
+                    ui.label("Continuous, non-repetitive procedural rain synthesis conditioned on 554 physical parameters.");
+                    ui.add_space(8.0);
+                    self.rain_view.render(ui, &mut self.state.rain);
+                });
+
+                ui.add_space(14.0);
+
+                // Task & Workspace Management
+                ui.collapsing("📋 Workspace Tasks & Notes", |ui| {
+                    components::item_list::render_summary_cards(self, ui, &constraints);
+                    ui.add_space(10.0);
+                    components::item_list::render_new_item_form(self, ui, &constraints);
+                    ui.add_space(10.0);
+                    components::item_list::render_item_list(self, ui, &constraints);
+                });
+            });
         });
 
         components::modals::render_dialogs(self, ui);

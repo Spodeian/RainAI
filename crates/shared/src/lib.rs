@@ -4,9 +4,13 @@ use serde::{Deserialize, Serialize};
 
 pub mod export;
 pub mod models;
+pub mod preset;
+pub mod rain;
 
 pub use export::*;
 pub use models::*;
+pub use preset::*;
+pub use rain::*;
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum ThemeMode {
@@ -79,6 +83,8 @@ pub struct AppState {
     pub config: AppConfig,
     #[serde(default)]
     pub collection: ItemCollection,
+    #[serde(default)]
+    pub rain: RainState,
 }
 
 impl AppState {

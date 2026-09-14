@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "WebAssembly client and WebRunner entrypoint"
 
+[lints]
+workspace = true
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 

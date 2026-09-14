@@ -1,15 +1,12 @@
-# Serverless & Desktop egui Template
+# 🌧 RainAI · Neural Spatial Soundscape Studio
 
-[![CI & Test Suite](https://github.com/Spodeian/efficient-egui-template/actions/workflows/ci.yml/badge.svg)](https://github.com/Spodeian/efficient-egui-template/actions/workflows/ci.yml)
-[![GitHub Pages](https://github.com/Spodeian/efficient-egui-template/actions/workflows/static.yml/badge.svg)](https://github.com/Spodeian/efficient-egui-template/actions/workflows/static.yml)
-[![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
+[![CI & Test Suite](https://github.com/Spodeian/RainAI/actions/workflows/ci.yml/badge.svg)](https://github.com/Spodeian/RainAI/actions/workflows/ci.yml)
+[![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](LICENSE)
 [![Rust: 2024 Edition](https://img.shields.io/badge/Rust-2024%20Edition-orange.svg)](https://www.rust-lang.org)
 [![egui: 0.36](https://img.shields.io/badge/egui-0.36-blueviolet.svg)](https://github.com/emilk/egui)
-[![Cloudflare Pages: v3](https://img.shields.io/badge/Cloudflare%20Pages-Build%20System%20v3-F38020.svg)](https://pages.cloudflare.com)
+[![WebGPU & WASM](https://img.shields.io/badge/WebGPU-WASM%20Edge-blue.svg)](https://github.com/Spodeian/RainAI)
 
-A production-ready, modular Rust & [`egui 0.36`](https://github.com/emilk/egui) / [`eframe 0.36`](https://docs.rs/eframe) template designed for high-performance **Serverless Web (WASM / Cloudflare Pages / PWA via Trunk)** and **Native Desktop (Windows, macOS, Linux via Winit)** applications.
-
-Based directly on the proven architecture, production fixes, and deployment pipelines of [Revisited IPIP-NEO](https://github.com/Spodeian/Revisited-IPIP-NEO).
+A production-ready, zero-latency **Neural Spatial Audio Synthesis Studio** built in Rust, [`egui 0.36`](https://github.com/emilk/egui) / [`eframe 0.36`](https://docs.rs/eframe), WebGPU compute shaders, and Higher-Order Ambisonics ($W, Y, Z, X$). Designed for high-performance **Serverless Web (WASM / Cloudflare Pages / PWA via Trunk)** and **Native Desktop (Windows, macOS, Linux via Winit)** deployment.
 
 ---
 

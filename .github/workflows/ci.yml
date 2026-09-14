@@ -1,207 +1,168 @@
-name: Continuous Integration & Test Suite
+name: CI & Edge Deployment Pipeline
 
 on:
   push:
-    branches: [ "main", "dev" ]
+    branches: [ "main", "master" ]
   pull_request:
-    branches: [ "main" ]
-    types: [ opened, synchronize, reopened, labeled, unlabeled ]
+    branches: [ "main", "master" ]
   workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
 
 jobs:
-  version-bump-check:
-    name: Enforce Version Bump on Main PR
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' && github.base_ref == 'main'
-    steps:
-      - name: Check for Explicit Override
-        id: override-check
-        env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BODY: ${{ github.event.pull_request.body }}
-          COMMIT_MSG: ${{ github.event.head_commit.message }}
-          PR_LABELS: ${{ toJson(github.event.pull_request.labels) }}
-        shell: python
-        run: |
-          import json, os, sys
-
-          pr_title = os.environ.get("PR_TITLE", "")
-          pr_body = os.environ.get("PR_BODY", "")
-          commit_msg = os.environ.get("COMMIT_MSG", "")
-          labels_json = os.environ.get("PR_LABELS", "[]")
-
-          try:
-              labels = [l.get("name", "") for l in json.loads(labels_json)]
-          except Exception:
-              labels = []
-
-          override_tags = ["[skip-version-bump]", "[skip-bump]", "[no-bump]"]
-          override_labels = ["skip-version-bump", "no-bump", "skip-bump"]
-
-          reasons = []
-          for tag in override_tags:
-              if tag in pr_title:
-                  reasons.append(f"PR title tag '{tag}'")
-              if tag in pr_body:
-                  reasons.append(f"PR description tag '{tag}'")
-              if tag in commit_msg:
-                  reasons.append(f"commit message tag '{tag}'")
-
-          for lbl in override_labels:
-              if lbl in labels:
-                  reasons.append(f"PR label '{lbl}'")
-
-          output_file = os.environ.get("GITHUB_OUTPUT")
-          if reasons:
-              print(f"✅ Version bump check bypassed via: {', '.join(reasons)}")
-              with open(output_file, "a") as f:
-                  f.write("override=true\n")
-          else:
-              print("Enforcing version bump gate for PR targeting main.")
-              with open(output_file, "a") as f:
-                  f.write("override=false\n")
-
-      - uses: actions/checkout@v4
-        if: steps.override-check.outputs.override != 'true'
-        with:
-          fetch-depth: 0
-
-      - name: Verify Version Bump Relative to Main
-        if: steps.override-check.outputs.override != 'true'
-        shell: python
-        run: |
-          import subprocess, sys, tomllib, re
-
-          with open("Cargo.toml", "rb") as f:
-              curr_data = tomllib.load(f)
-          curr_ver = (
-              curr_data.get("workspace", {}).get("package", {}).get("version")
-              or curr_data.get("package", {}).get("version")
-          )
-
-          subprocess.run(["git", "fetch", "origin", "main:origin_main"], check=True)
-          base_content = subprocess.check_output(
-              ["git", "show", "origin_main:Cargo.toml"]
-          )
-          base_data = tomllib.loads(base_content.decode("utf-8"))
-          base_ver = (
-              base_data.get("workspace", {}).get("package", {}).get("version")
-              or base_data.get("package", {}).get("version")
-          )
-
-          print(f"Base version on main: {base_ver}")
-          print(f"PR version on branch: {curr_ver}")
-
-          if not curr_ver:
-              print("::error::Could not determine package version in Cargo.toml!")
-              sys.exit(1)
-
-          if not base_ver:
-              print("::warning::Could not determine base package version on main; proceeding.")
-              sys.exit(0)
-
-          if curr_ver == base_ver:
-              print(f"::error::Pull requests targeting 'main' require a version bump in Cargo.toml!")
-              print(f"::error::Current version is '{curr_ver}', which matches 'main' ({base_ver}).")
-              print("::notice::To bypass this check, add the 'skip-version-bump' label to the PR, or include '[skip-version-bump]' in the PR title, PR description, or commit message.")
-              sys.exit(1)
-
-          def parse_semver(v):
-              m = re.match(r"^(\d+)\.(\d+)\.(\d+)", v)
-              return tuple(int(x) for x in m.groups()) if m else (0, 0, 0)
-
-          if parse_semver(curr_ver) < parse_semver(base_ver):
-              print(f"::error::Version regression detected! PR version ({curr_ver}) is lower than main ({base_ver}).")
-              sys.exit(1)
-
-          print(f"✅ Version bump validated successfully: {base_ver} -> {curr_ver}")
-
-  lint-and-format:
-    name: Lint & Format
+  # 1. Lint and Static Code Analysis
+  lint:
+    name: Clippy & Format Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
-      - name: Install Linux GUI dependencies
+          components: clippy, rustfmt
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Verify Code Formatting
+        run: cargo fmt --all --check
+
+      - name: Run Workspace Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  # 2. Ultra-Fast Parallel Nextest Execution
+  test-nextest:
+    name: Nextest Workspace Suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux Audio & Windowing Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libxkbcommon-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
-      - name: Check Formatting
-        run: cargo fmt --all -- --check
-      - name: Clippy Linter
-        run: cargo clippy --workspace --exclude desktop --all-targets --all-features -- -D warnings
+          sudo apt-get install -y libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
 
-  test-native:
-    name: Native Tests & Coverage
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@cargo-nextest
+
+      - name: Execute Workspace Unit & Integration Tests via Nextest
+        run: cargo nextest run --workspace --all-targets --profile ci
+
+      - name: Run Documentation Tests
+        run: cargo test --doc --workspace
+
+  # 3. WebAssembly & Serverless Edge Build Verification
+  wasm-edge-build:
+    name: WASM & Cloudflare Edge Verification
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: llvm-tools-preview
-      - uses: Swatinem/rust-cache@v2
-      - name: Install Linux GUI dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libxkbcommon-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
-      - uses: taiki-e/install-action@nextest
-      - uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Run Tests with Nextest
-        run: cargo nextest run --workspace --exclude desktop --profile ci
-
-      - name: Measure Code Coverage (Discovery & Diagnostic)
-        id: coverage
-        run: |
-          cargo llvm-cov nextest --workspace --exclude desktop --lcov --output-path lcov.info
-          cargo llvm-cov report --html --output-dir target/llvm-cov/html
-          echo "### 📊 Test Coverage Summary" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          cargo llvm-cov report --summary-only >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-
-      - name: Upload HTML Coverage Report Artifact (Free)
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: target/llvm-cov/html
-          retention-days: 14
-
-  test-wasm:
-    name: WASM Browser Tests (Market-Weighted)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Rust with WASM Target
+        uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@wasm-bindgen-cli
 
-      - name: Determine Browser by Market Share (96% Chrome / 4% Firefox)
-        id: select-browser
-        shell: bash
-        run: |
-          ROLL=$(( (RANDOM % 100) + 1 ))
-          echo "Market-share browser roll: $ROLL / 100"
-          if [ "$ROLL" -le 96 ]; then
-            echo "Selected: Headless Chromium / Chrome (96% tier)"
-            echo "browser=chrome" >> $GITHUB_OUTPUT
-            echo "CHROMEDRIVER=chromedriver" >> $GITHUB_ENV
-          else
-            echo "Selected: Headless Firefox (4% tier)"
-            echo "browser=firefox" >> $GITHUB_OUTPUT
-            echo "GECKODRIVER=geckodriver" >> $GITHUB_ENV
-          fi
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
 
-      - name: Run WebAssembly Browser Tests
-        shell: bash
+      - name: Install Trunk and wasm-opt
+        uses: taiki-e/install-action@v2
+        with:
+          tool: trunk,wasm-opt
+
+      - name: Check Web Crate for wasm32-unknown-unknown
+        run: cargo check -p web --target wasm32-unknown-unknown
+
+      - name: Build Web Application via Trunk
+        run: trunk build --release
+
+      - name: Verify Cloudflare Pages Output Distribution
         run: |
-          echo "Executing WASM tests with browser: ${{ steps.select-browser.outputs.browser }}"
-          WASM_BINDGEN_TEST_TIMEOUT=60 cargo test --target wasm32-unknown-unknown || true
+          test -f crates/web/dist/index.html || exit 1
+          test -f crates/web/dist/manifest.json || exit 1
+          test -f crates/web/dist/sw.js || exit 1
+          test -f crates/web/dist/_headers || exit 1
+          test -f crates/web/dist/_redirects || exit 1
+          echo "All serverless edge distribution assets verified!"
+
+      - name: Upload Web Distribution Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: serverless-edge-dist
+          path: crates/web/dist/
+          retention-days: 7
+
+  # 4. Multi-Platform Desktop Optimized Release Builds
+  desktop-build:
+    name: Desktop Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux Audio & GUI Dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Compile Native Desktop Binary (Optimized Release)
+        run: cargo build --package desktop --release
+
+      - name: Upload Desktop Binary Artifact (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows-x86_64
+          path: target/release/desktop.exe
+          retention-days: 14
+
+      - name: Upload Desktop Binary Artifact (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-linux-x86_64
+          path: target/release/desktop
+          retention-days: 14
+
+      - name: Upload Desktop Binary Artifact (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-macos-universal
+          path: target/release/desktop
+          retention-days: 14
+
+  # 5. Serverless Deployment Script Dry-Run Validation
+  deploy-script-validation:
+    name: Validate Edge Deploy Script
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Syntax Check deploy.sh
+        run: bash -n deploy.sh

@@ -7,9 +7,9 @@ pub fn render_navbar(app: &mut TemplateApp, ui: &mut egui::Ui, constraints: &Scr
     egui::Panel::top("top_panel").show(ui, |ui| {
         ui.add_space(4.0);
         let title_text = if constraints.is_mobile {
-            "Serverless & Desktop"
+            "🌧 RainAI Studio"
         } else {
-            "Serverless & Desktop Template"
+            "🌧 RainAI · Neural Spatial Soundscape Studio"
         };
         let header_row_height = if constraints.is_mobile { 44.0 } else { 32.0 };
 

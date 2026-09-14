@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Native desktop runner for the Serverless & Desktop Template"
 
+[lints]
+workspace = true
+
 [dependencies]
 eframe = { workspace = true }
 tracing = { workspace = true }

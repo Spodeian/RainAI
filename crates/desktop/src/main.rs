@@ -20,14 +20,17 @@ fn main() -> eframe::Result<()> {
     // Native window viewport configurations
     let options = NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("Serverless & Desktop Template")
+            .with_title("🌧 RainAI · Neural Spatial Soundscape Studio")
             .with_inner_size([1100.0, 750.0])
-            .with_min_inner_size([700.0, 500.0]),
+            .with_min_inner_size([700.0, 500.0])
+            .with_active(true)
+            .with_resizable(true),
+        renderer: eframe::Renderer::Wgpu,
         ..Default::default()
     };
 
     eframe::run_native(
-        "Serverless & Desktop Template",
+        "🌧 RainAI · Neural Spatial Soundscape Studio",
         options,
         Box::new(|cc| Ok(Box::new(TemplateApp::new(cc)))),
     )

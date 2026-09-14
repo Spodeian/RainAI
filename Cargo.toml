@@ -3,6 +3,8 @@ resolver = "3"
 members = [
     "crates/app",
     "crates/shared",
+    "crates/audio",
+    "crates/inference",
     "crates/desktop",
     "crates/web",
 ]
@@ -12,10 +14,10 @@ members = [
 version = "0.1.0"
 authors = ["Liam <spodeian@proton.me>"]
 edition = "2024"
-license = "MIT OR Apache-2.0"
+license = "CC-BY-NC-SA-4.0"
 readme = "README.md"
-description = "Modern, modular Serverless (WASM/Cloudflare Pages) & Native Desktop template built with Rust and egui"
-repository = "https://github.com/Spodeian/efficient-egui-template"
+description = "RainAI · Real-time neural spatial soundscape synthesis studio in Rust, WebGPU, and WebAssembly"
+repository = "https://github.com/Spodeian/RainAI"
 
 [workspace.dependencies]
 eframe = { version = "0.36", default-features = false, features = ["default_fonts"] }
@@ -27,17 +29,33 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "ansi", "traci
 tracing-web = "0.1"
 
 shared = { path = "crates/shared" }
+audio = { path = "crates/audio" }
+inference = { path = "crates/inference" }
 app = { path = "crates/app" }
 thiserror = "2.0"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
-web-sys = { version = "0.3", features = ["Document", "Window", "HtmlCanvasElement", "Element", "Blob", "BlobPropertyBag", "Url", "HtmlAnchorElement", "HtmlDocument", "Location"] }
+web-sys = { version = "0.3", features = ["Document", "Window", "HtmlCanvasElement", "Element", "Blob", "BlobPropertyBag", "Url", "HtmlAnchorElement", "HtmlDocument", "Location", "AudioContext", "AudioContextOptions", "AudioBuffer", "AudioBufferSourceNode", "AudioDestinationNode", "AudioNode", "GainNode", "ScriptProcessorNode", "AudioProcessingEvent"] }
 js-sys = "0.3"
 console_error_panic_hook = "0.1.7"
 bson = "2"
 miniz_oxide = "0.8"
 base64 = "0.22"
 ron = "0.12"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+collapsible_if = "allow"
+needless_range_loop = "allow"
+too_many_arguments = "allow"
+needless_borrow = "allow"
+nonminimal_bool = "allow"
+get_first = "allow"
+approx_constant = "allow"
+match_like_matches_macro = "allow"
 
 [profile.release]
 opt-level = 3
@@ -48,6 +66,14 @@ strip = true
 overflow-checks = false
 incremental = false
 rpath = false
+
+[profile.release-small]
+inherits = "release"
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
 
 [profile.release.build-override]
 opt-level = 2
@@ -70,7 +96,9 @@ debug = true
 opt-level = 2
 overflow-checks = false
 
+# Fast test execution: line-level debuginfo for quick linking, optimized dependencies for faster test runs
 [profile.test]
+debug = 1
+
+[profile.test.package."*"]
 opt-level = 2
-lto = "thin"
-debug = true

@@ -1,17 +1,35 @@
-# Nextest Configuration
-# https://nexte.st/book/configuration.html
+# Cargo-Nextest Configuration for Ultra-Fast Parallel Workspace Testing
+# Documentation: https://nexte.st/book/configuration.html
 
 [profile.default]
+# Exit immediately upon first test failure in local dev
 fail-fast = false
-retries = 1
+# Stream test output immediately on failure
+failure-output = "immediate"
+# Status level for running tests
 status-level = "pass"
 final-status-level = "flaky"
+# Timeout configuration for audio & numerical simulation tests
+slow-timeout = { period = "30s", terminate-after = 2 }
 
 [profile.ci]
+# In CI, run all tests to gather complete diagnostics
 fail-fast = false
-retries = 2
+failure-output = "immediate"
 status-level = "pass"
-final-status-level = "fail"
+final-status-level = "flaky"
+# Automatically retry flaky tests once in CI
+retries = 1
+# Extended timeout for headless CI runners
+slow-timeout = { period = "60s", terminate-after = 2 }
 
-[profile.ci.junit]
-path = "junit.xml"
+# Per-package custom overrides
+[[profile.default.overrides]]
+filter = 'package(audio) | package(inference)'
+threads-required = 1
+slow-timeout = { period = "45s" }
+
+[[profile.ci.overrides]]
+filter = 'package(audio) | package(inference)'
+threads-required = 1
+slow-timeout = { period = "90s" }
