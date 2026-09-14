@@ -1,0 +1,90 @@
+{
+  "audio": {
+    "sample_rate": 48000,
+    "channels": 4,
+    "format": "First-Order Ambisonics (FOA, ACN/SN3D)",
+    "channel_order": [
+      "W",
+      "Y",
+      "Z",
+      "X"
+    ],
+    "block_size": 128,
+    "target_buffer_ms": 40.0
+  },
+  "neural_control": {
+    "latent_dim": 64,
+    "latent_rate_hz": 100,
+    "conditioning_dim": 554,
+    "num_moe_experts": 8,
+    "subtractive_filters": {
+      "total": 16,
+      "tied_physics_bands": 12,
+      "untied_texture_bands": 4,
+      "learned_drift": [
+        0.0033373055048286915,
+        0.0027257325127720833,
+        0.0011902787955477834,
+        -0.0008779404452070594,
+        -0.001496791490353644,
+        0.0032215453684329987,
+        0.0022632027976214886,
+        -0.0006406381726264954,
+        -0.00151082465890795,
+        0.00360373524017632,
+        -0.0005228554364293814,
+        0.0036691855639219284,
+        0.0023833836894482374,
+        0.003969717305153608,
+        0.0030191161204129457,
+        0.0034048419911414385
+      ]
+    },
+    "quality_tiers": {
+      "default": "adaptive_minimum",
+      "available": [
+        "ternary_1_58bit",
+        "adaptive_minimum",
+        "high_int16",
+        "studio_fp32"
+      ],
+      "on_demand_download": {
+        "ternary_1_58bit": "models/quantized_model_manifest_ternary.json",
+        "high_int16": "models/quantized_model_manifest_int16.json",
+        "studio_fp32": "models/quantized_model_manifest_fp32.json"
+      }
+    },
+    "meta_controller": {
+      "inputs": [
+        "moe_logits",
+        "telemetry_4d (buffer, cpu, gpu, delta_t)",
+        "user_weights",
+        "quality_scores"
+      ],
+      "architecture": "1D Mamba/SSD Telemetry Tracker + Affine LayerNorm Stabilization with Anti-Hunting Hysteresis",
+      "actions": [
+        "expert_shedding",
+        "ambisonic_order_scaling",
+        "diffusion_bypass",
+        "synthesis_blend",
+        "safety_reserve_ms"
+      ],
+      "hardware_stress_profiles": [
+        "0_nominal_desktop",
+        "1_thermal_throttling_cascade",
+        "2_gc_webaudio_micro_stalls",
+        "3_unified_memory_bus_contention",
+        "4_dynamic_game_daw_interference",
+        "5_bluetooth_a2dp_audio_sink",
+        "6_eco_sleep_soundscape_mode",
+        "7_heterogeneous_ecore_asymmetry"
+      ]
+    }
+  },
+  "webgpu": {
+    "wgsl_shader": "shaders/droplet_panning.wgsl",
+    "max_concurrent_droplets": 100000,
+    "shared_array_buffer_required": true,
+    "coop_coep_headers_required": true
+  }
+}

@@ -466,7 +466,7 @@ pub struct QuantizedModelManifest {
 impl QuantizedModelManifest {
     /// Loads the embedded default ternary 1.58-bit manifest
     pub fn load_default_ternary() -> Result<Self, serde_json::Error> {
-        let manifest_str = include_str!("../../../../RainAI/export/quantized_model_manifest_ternary.json");
+        let manifest_str = include_str!("../data/quantized_model_manifest_ternary.json");
         serde_json::from_str(manifest_str)
     }
 
