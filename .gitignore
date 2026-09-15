@@ -27,27 +27,42 @@ htmlcov/
 # ------------------------------------------------------------------------------
 # 3. Model Weights & Generated Inference Assets
 # ------------------------------------------------------------------------------
-# Local PyTorch training checkpoints
 ai/checkpoints/
 *.pt
 
-# Unified Crates Inference Data (SafeTensors, ONNX, and WASM binary slices)
-crates/inference/data/candle/*.safetensors
-crates/inference/data/onnx/*.onnx
-crates/inference/data/onnx/*.onnx.data
-crates/inference/data/wasm/*.bin
+# ------------------------------------------------------------------------------
+# 4. Data Directories, Audio Datasets & Large Binary Media
+# ------------------------------------------------------------------------------
+# Ignore contents of root and workspace data directories, but allow .gitkeep files
+/data/*
+!/data/
+!/data/**/.gitkeep
+!/data/.gitkeep
 
-# ------------------------------------------------------------------------------
-# 4. Audio Datasets & Large Binary Media
-# ------------------------------------------------------------------------------
-ai/Data/rain/
-ai/Data/rain-nc/
-ai/Data/processed/*.flac
-ai/Data/processed/*.wav
+/Data/*
+!/Data/
+!/Data/**/.gitkeep
+!/Data/.gitkeep
+
+/ai/Data/*
+!/ai/Data/
+!/ai/Data/**/.gitkeep
+!/ai/Data/.gitkeep
+
+/crates/inference/data/*
+!/crates/inference/data/
+!/crates/inference/data/**/.gitkeep
+!/crates/inference/data/.gitkeep
+
+# Global exclusions for audio and binary model artifacts
 *.flac
 *.wav
 *.ogg
 *.mp3
+*.safetensors
+*.onnx
+*.onnx.data
+*.bin
 
 # ------------------------------------------------------------------------------
 # 5. Frontend UI, Web & Edge Cloud Deployments

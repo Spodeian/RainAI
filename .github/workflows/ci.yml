@@ -119,6 +119,7 @@ jobs:
               sys.exit(1)
 
           print(f"✅ Version bump validated successfully: {base_ver} -> {curr_ver}")
+
   # 1. Lint and Static Code Analysis
   lint:
     name: Clippy & Format Check
@@ -141,9 +142,9 @@ jobs:
       - name: Run Workspace Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-  # 2. Ultra-Fast Parallel Nextest Execution
+  # 2. Ultra-Fast Parallel Nextest Execution & Benchmarks
   test-nextest:
-    name: Nextest Workspace Suite
+    name: Nextest Workspace Suite & Benchmarks
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -169,6 +170,9 @@ jobs:
       - name: Run Documentation Tests
         run: cargo test --doc --workspace
 
+      - name: Verify Workspace Benchmarks Compilation
+        run: cargo check --benches --workspace
+
   # 3. WebAssembly & Serverless Edge Build Verification
   wasm-edge-build:
     name: WASM & Cloudflare Edge Verification
@@ -193,8 +197,17 @@ jobs:
       - name: Check Web Crate for wasm32-unknown-unknown
         run: cargo check -p web --target wasm32-unknown-unknown
 
-      - name: Build Web Application via Trunk
-        run: trunk build --release
+      - name: Build Web Application via Trunk (SIMD enabled)
+        env:
+          RUSTFLAGS: "-C target-feature=+simd128"
+        run: |
+          trunk build --release
+          for wasm_file in crates/web/dist/*.wasm; do
+            if [ -f "$wasm_file" ]; then
+              echo "Optimizing $wasm_file with wasm-opt (SIMD enabled)"
+              wasm-opt -Oz --enable-simd "$wasm_file" -o "$wasm_file" || true
+            fi
+          done
 
       - name: Verify Cloudflare Pages Output Distribution
         run: |

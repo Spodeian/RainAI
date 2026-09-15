@@ -2,12 +2,14 @@
 .SYNOPSIS
     RainAI Automated Training, Export & Benchmark Orchestrator Launcher
 .DESCRIPTION
-    Runs the automated hardware-adaptive training pipeline using the local Python virtual environment.
+    Runs the automated hardware-adaptive training pipeline, automatically provisioning 
+    the Python virtual environment and installing dependencies from requirements.txt if needed.
 .EXAMPLE
     .\train.ps1 -Profile smoke-test
     .\train.ps1 -Profile balanced
     .\train.ps1 -Profile production
     .\train.ps1 -Phases vae export -SliceLevel 2
+    .\train.ps1 -Profile balanced -UseActiveLearning -ChunkCurriculum
 #>
 param(
     [ValidateSet("smoke-test", "balanced", "production", "export-only", "custom")]
@@ -25,6 +27,8 @@ param(
     [switch]$NoAmp,
     [switch]$UseDisc,
     [switch]$ChunkCurriculum,
+    [switch]$UseActiveLearning,
+    [switch]$PinMemory,
     [switch]$Fresh,
     [switch]$PrepareData,
     [switch]$RebuildData,
@@ -39,11 +43,42 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ScriptDir
 
-# Locate localized Python execution environments safely
-$PythonExe = Join-Path $ScriptDir ".venv\Scripts\python.exe"
+# Setup Python Virtual Environment and Requirements
+$VenvPath = Join-Path $ScriptDir ".venv"
+$PythonExe = Join-Path $VenvPath "Scripts\python.exe"
+$RequirementsPath = Join-Path $ScriptDir "requirements.txt"
+
 if (-not (Test-Path $PythonExe)) {
-    Write-Warning "[*] .venv\Scripts\python.exe not found. Using system python..."
-    $PythonExe = "python"
+    Write-Host "[*] Python virtual environment (.venv) not found. Creating one..." -ForegroundColor Yellow
+    
+    # Locate system python command
+    $SysPython = "python"
+    if (-not (Get-Command $SysPython -ErrorAction SilentlyContinue)) {
+        $SysPython = "python3"
+    }
+
+    try {
+        & $SysPython -m venv $VenvPath
+    } catch {
+        Write-Error "Failed to create virtual environment using '$SysPython'. Ensure Python is installed and added to PATH."
+        exit 1
+    }
+
+    Write-Host "[*] Upgrading pip inside virtual environment..." -ForegroundColor Yellow
+    & $PythonExe -m pip install --upgrade pip
+
+    if (Test-Path $RequirementsPath) {
+        Write-Host "[*] Installing dependencies from requirements.txt..." -ForegroundColor Yellow
+        & $PythonExe -m pip install -r $RequirementsPath
+    } else {
+        Write-Warning "[!] requirements.txt not found in project root. Skipping dependency installation."
+    }
+} else {
+    # Optional safety check: ensure requirements.txt changes are accounted for if needed
+    if (Test-Path $RequirementsPath) {
+        # Quick silent check or let pip handle caching/fulfillment
+        & $PythonExe -m pip install -q -r $RequirementsPath
+    }
 }
 
 $ArgsList = @("-X", "utf8", "scripts\auto_train.py", "--profile", $Profile)
@@ -64,6 +99,8 @@ if ($PSBoundParameters.ContainsKey('NumSlices')) { $ArgsList += @("--num-slices"
 if ($NoAmp) { $ArgsList += "--no-amp" }
 if ($UseDisc) { $ArgsList += "--use-disc" }
 if ($ChunkCurriculum) { $ArgsList += "--chunk-curriculum" }
+if ($UseActiveLearning) { $ArgsList += "--use-active-learning" }
+if ($PinMemory) { $ArgsList += "--pin-memory" }
 if ($Fresh) { $ArgsList += "--fresh" }
 if ($PrepareData) { $ArgsList += "--prepare-data" }
 if ($RebuildData) { $ArgsList += "--rebuild-data" }
@@ -73,6 +110,10 @@ if ($LogFile) { $ArgsList += @("--log-file", $LogFile) }
 if ($Verbose) { $ArgsList += "--verbose" }
 if ($Quiet) { $ArgsList += "--quiet" }
 
-# Execute the deep learning training lifecycle pass
+# Execute the deep learning training lifecycle pass with UTF-8 encoding stream
+$OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+Write-Host "[*] Launching RainAI Training Orchestrator [Profile: $Profile]..." -ForegroundColor Cyan
 & $PythonExe $ArgsList
 exit $LASTEXITCODE
