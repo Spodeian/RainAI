@@ -2,8 +2,8 @@
 .SYNOPSIS
     RainAI Automated Training, Export & Benchmark Orchestrator Launcher
 .DESCRIPTION
-    Runs the automated hardware-adaptive training pipeline, probing local hardware,
-    synchronizing the virtual environment, and using the official PyTorch index repository.
+    Runs the automated hardware-adaptive training pipeline with version-aware 
+    PyTorch backend selection targeting CUDA 13 wheels for Python 3.14+.
 .EXAMPLE
     .\train.ps1 -Profile smoke-test
     .\train.ps1 -Profile balanced
@@ -67,8 +67,12 @@ if (-not (Test-Path $PythonExe) -or $Fresh) {
     }
 }
 
-# 2. Hardware Probing & PyTorch Index Selection
-Write-Host "[*] Probing host hardware architecture..." -ForegroundColor Cyan
+# 2. Python Version & Hardware Probing for PyTorch Index Selection
+Write-Host "[*] Probing host Python version and hardware architecture..." -ForegroundColor Cyan
+
+$PyVersionInfo = & $PythonExe -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
+Write-Host "[+] Active Python Version: $PyVersionInfo" -ForegroundColor Cyan
+
 $HasCuda = $false
 $TorchIndexUrl = "https://download.pytorch.org/whl/cpu"
 
@@ -77,7 +81,12 @@ try {
         $NvidiaSmiOutput = & nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>&1
         if ($LASTEXITCODE -eq 0 -and $NvidiaSmiOutput) {
             $HasCuda = $true
-            $TorchIndexUrl = "https://download.pytorch.org/whl/cu121"
+            # Route Python 3.14+ to CUDA 13 wheels, and older python versions to CUDA 12.4
+            if ([version]$PyVersionInfo -ge [version]"3.14") {
+                $TorchIndexUrl = "https://download.pytorch.org/whl/cu130"
+            } else {
+                $TorchIndexUrl = "https://download.pytorch.org/whl/cu124"
+            }
             Write-Host "[+] NVIDIA CUDA GPU detected. Target Index: $TorchIndexUrl" -ForegroundColor Green
         }
     }
@@ -94,7 +103,6 @@ Write-Host "[*] Installing/updating PyTorch ecosystem backend..." -ForegroundCol
 
 if (Test-Path $RequirementsPath) {
     Write-Host "[*] Synchronizing workspace dependencies from requirements.txt..." -ForegroundColor Cyan
-    # Pass --extra-index-url so pip resolves torch/torchaudio correctly if referenced in requirements.txt
     & $PythonExe -m pip install -r $RequirementsPath --extra-index-url $TorchIndexUrl
 } else {
     Write-Warning "[!] requirements.txt not found in project root."
