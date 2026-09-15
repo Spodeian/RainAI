@@ -17,8 +17,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.data.spatial_upmix import process_audio_file
-from src.data.semantic_tag import generate_manifest_for_directory
+from data.spatial_upmix import process_audio_file
+from data.semantic_tag import generate_manifest_for_directory
 
 
 def run_preprocessing(

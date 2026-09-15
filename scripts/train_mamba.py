@@ -24,7 +24,7 @@ from src.data.dataset import create_dataloader
 from src.models.diff_autoencoder import SpatialAudioEncoder
 from src.models.mamba2_moe import Mamba2MoETrajectory
 from src.models.meta_controller import InvasiveMetaController
-from src.dsp.physics_losses import (
+from src.models.physics_losses import (
     PhysicsTrajectoryLoss,
     compute_slice_aware_hwil_penalty,
     MoELoadBalancingLoss
@@ -94,28 +94,23 @@ def train_mamba_epoch(
         u = batch["conditioning"].to(device)     # (B, 554)
         batch_size = audio.shape[0]
         
-        # 0. Classifier-Free Guidance (CFG) Condition Dropout
         if torch.rand(1).item() < cfg_dropout_prob:
             u_eff = torch.zeros_like(u)
         else:
             u_eff = u
             
-        # 1. Stochastic Slice Sampling (Biased 50% to Master Slice S4)
         if torch.rand(1).item() < 0.5:
             slice_level = 4
         else:
             slice_level = int(torch.randint(0, 4, (1,)).item())
             
-        # 2. Extract ground-truth continuous latents using frozen VAE encoder at full resolution
         with torch.no_grad():
             z_q, _, enc_quality = encoder(audio, u_eff, tau=0.05, active_level=4)
             
-        # Target trajectory shifted by 1 frame
         z_seq = z_q.transpose(1, 2)
         z_input = z_seq[:, :-1, :]
         z_target = z_seq[:, 1:, :]
         
-        # 3. 8-Profile Hardware Domain Randomization Suite
         profile_choice = torch.randint(0, 8, (batch_size, 1), device=device)
         buf_ms = torch.empty(batch_size, 1, device=device).uniform_(30.0, 50.0)
         cpu_h = torch.empty(batch_size, 1, device=device).uniform_(0.8, 1.0)
@@ -161,7 +156,6 @@ def train_mamba_epoch(
         
         device_type = "cuda" if device.startswith("cuda") else "cpu"
         with torch.amp.autocast(device_type, enabled=use_amp):
-            # 4. Meta-Controller predicts expert mask with active slice awareness
             meta_decision = meta_controller(
                 init_logits, 
                 telemetry, 
@@ -172,7 +166,6 @@ def train_mamba_epoch(
             expert_mask = meta_decision["expert_mask"]
             tau_moe = meta_decision["tau_moe"]
             
-            # 5. Mamba-2 MoE trajectory step with Jamba attention
             mu, sigma, moe_logits, mamba_quality, log_var = mamba_moe(
                 z_input, 
                 u_eff, 
@@ -182,22 +175,17 @@ def train_mamba_epoch(
                 active_level=slice_level
             )
             
-            # 6. Physics-Informed Trajectory Loss (NLL + Turbulent Velocity + 1/f Spectrum)
             traj_losses = traj_loss_fn(mu, log_var, z_target)
             traj_loss = traj_losses["total_traj_loss"]
             
-            # 7. Flow Matching Vector Field ODE Loss
             flow_dict = mamba_moe.compute_flow_matching_loss(z_target, u_eff, expert_mask, tau_moe)
             flow_loss = flow_dict["flow_matching_loss"]
             
-            # 8. MoE Load Balancing & Entropy Loss
             moe_loss_dict = moe_balancer(expert_mask)
             moe_aux_loss = moe_loss_dict["moe_aux_loss"]
             
-            # 9. Structured Activation Sparsity
             sparsity_loss = mamba_moe.get_activation_sparsity_loss()
             
-            # 10. Slice-Aware Hardware Penalty
             hwil_penalty = compute_slice_aware_hwil_penalty(
                 expert_mask, 
                 buf_ms, 
@@ -287,13 +275,11 @@ def validate_mamba_epoch(
         u = batch["conditioning"].to(device)
         batch_size = audio.shape[0]
         
-        # Ground truth latents at full precision
         z_q, _, enc_quality = encoder(audio, u, tau=0.05, active_level=4)
         z_seq = z_q.transpose(1, 2)
         z_input = z_seq[:, :-1, :]
         z_target = z_seq[:, 1:, :]
         
-        # Nominal telemetry
         telemetry = torch.tensor([[40.0, 1.0, 1.0, 10.0]], device=device).repeat(batch_size, 1)
         user_weights = torch.tensor([[0.7, 0.3, 40.0]], device=device).repeat(batch_size, 1)
         init_logits = torch.zeros(batch_size, mamba_moe.num_experts, device=device)
@@ -377,14 +363,12 @@ def main():
     )
     print(f"[*] Loaded {len(train_loader.dataset)} train samples, {len(val_loader.dataset)} val samples.")
 
-    # Initialize models
     encoder = SpatialAudioEncoder().to(device)
     mamba_moe = Mamba2MoETrajectory().to(device)
     meta_controller = InvasiveMetaController(num_experts=8).to(device)
     traj_loss_fn = PhysicsTrajectoryLoss().to(device)
     moe_balancer = MoELoadBalancingLoss(num_experts=8).to(device)
 
-    # Load pretrained VAE encoder
     vae_ckpt_path = Path(args.vae_checkpoint) if args.vae_checkpoint else (save_dir / "spatial_vae_ddsp_latest.pt")
     if vae_ckpt_path.exists():
         print(f"[*] Loading pretrained SpatialAudioEncoder from {vae_ckpt_path.name}...")
@@ -448,7 +432,6 @@ def main():
         )
         scheduler.step()
         
-        # Validation Pass
         val_metrics = validate_mamba_epoch(
             encoder=encoder,
             mamba_moe=mamba_moe,
@@ -470,7 +453,6 @@ def main():
             flush=True
         )
         
-        # Save Best Checkpoint
         if val_metrics["val_loss"] < best_val_loss:
             best_val_loss = val_metrics["val_loss"]
             torch.save({
@@ -482,7 +464,6 @@ def main():
             }, save_dir / "mamba2_metacontroller_best.pt")
             print(f"  [*] Saved new best Mamba-2 checkpoint (Val Loss: {best_val_loss:.4f})")
 
-    # Save Latest Checkpoint
     save_path = save_dir / "mamba2_metacontroller_latest.pt"
     torch.save({
         "mamba_moe": mamba_moe.state_dict(),

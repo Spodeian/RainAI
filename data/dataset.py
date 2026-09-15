@@ -10,7 +10,7 @@ import soundfile as sf
 import torch
 from torch.utils.data import Dataset, DataLoader
 
-from src.data.spatial_upmix import apply_spatial_rir_convolution
+from data.spatial_upmix import apply_spatial_rir_convolution
 
 TARGET_SAMPLE_RATE = 48000
 CHUNK_DURATION_SEC = 5.0

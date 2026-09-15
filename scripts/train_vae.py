@@ -21,11 +21,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.data.dataset import create_dataloader
-from src.data.corruptions import AcousticCorruptionPipeline
+from data.dataset import create_dataloader
+from data.corruptions import AcousticCorruptionPipeline
+
 from src.models.diff_autoencoder import SpatialAudioEncoder, HierarchicalMultiResLoss
 from src.models.ddsp import ContinuousParametricFilter, DifferentiableReverbEngine
-from src.dsp.physics_losses import (
+from src.models.physics_losses import (
     MultiScaleAmbisonicPhysicsLoss,
     MultiScaleSTFTDiscriminator,
     discriminator_hinge_loss,
@@ -147,7 +148,6 @@ def train_epoch(
             if discriminator and opt_d:
                 fake_scores, fake_fmaps = discriminator(audio_rec)
                 g_adv_loss = generator_adversarial_loss(fake_scores)
-                # Compute real audio features once for both feature matching and discriminator training
                 with torch.amp.autocast(device_type, enabled=use_amp):
                     real_scores_d, real_fmaps_cached = discriminator(audio.detach())
                 fm_loss = feature_matching_loss(real_fmaps_cached, fake_fmaps)
@@ -262,7 +262,6 @@ def validate_epoch(
         u = batch["conditioning"].to(device)
         noise = batch["noise"].to(device)
         
-        # Validate at full FP32 Master slice (k=4) without corruptions
         z_q, _, _ = encoder(audio, u, tau=0.05, active_level=4)
         audio_rec, _ = ddsp(z_q, noise, ambisonic_order=1)
         
@@ -319,7 +318,6 @@ def main():
     is_cuda = device.startswith("cuda")
     print(f"[*] Compute device: {device} | AMP: {args.use_amp} | Accumulation: {args.accumulation_steps}")
     
-    # Train and Validation DataLoaders
     train_loader = create_dataloader(
         data_dir=processed_dir,
         manifest_path=manifest_path,
@@ -396,7 +394,6 @@ def main():
         tau = float(tau_schedule[min(epoch - 1, len(tau_schedule) - 1)])
         start = time.time()
         
-        # Schedule duration curriculum
         if hasattr(train_loader, "curriculum_collate") and train_loader.curriculum_collate is not None:
             train_loader.curriculum_collate.set_epoch(epoch)
         
@@ -424,7 +421,6 @@ def main():
             warnings.simplefilter("ignore")
             scheduler_g.step()
         
-        # Validation Pass
         val_metrics = validate_epoch(
             encoder=encoder,
             ddsp=ddsp,
@@ -444,7 +440,6 @@ def main():
             flush=True
         )
         
-        # Save Best Checkpoint
         if val_metrics["val_spectral"] < best_val_loss:
             best_val_loss = val_metrics["val_spectral"]
             torch.save({
@@ -456,7 +451,6 @@ def main():
             }, best_ckpt_path)
             print(f"  [*] Saved new best model checkpoint (Val Spec: {best_val_loss:.4f})")
 
-    # Save Latest Checkpoint
     save_path = save_dir / "spatial_vae_ddsp_latest.pt"
     torch.save({
         "encoder": encoder.state_dict(),

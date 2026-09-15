@@ -16,8 +16,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.data.audio_processor import AcousticFeatureExtractor
-from src.data.semantic_tag import SemanticAudioTagger
+from data.audio_processor import AcousticFeatureExtractor
+from data.semantic_tag import SemanticAudioTagger
 
 
 def update_datasets_to_standard(

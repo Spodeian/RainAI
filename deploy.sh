@@ -28,7 +28,7 @@ elif command -v python3 &> /dev/null; then
 fi
 
 echo "[*] Using Python environment: $($PYTHON_EXE --version)"
-"$PYTHON_EXE" -X utf8 scripts/export_multi_backend.py
+"$PYTHON_EXE" -X utf8 scripts/export_all.py
 
 EXPORT_DIR="$ROOT_DIR/export"
 SLICES_DIR="$EXPORT_DIR/slices"

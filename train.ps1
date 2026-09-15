@@ -2,14 +2,12 @@
 .SYNOPSIS
     RainAI Automated Training, Export & Benchmark Orchestrator Launcher
 .DESCRIPTION
-    Runs the automated hardware-adaptive training pipeline, automatically provisioning 
-    the Python virtual environment and installing dependencies from requirements.txt if needed.
+    Runs the automated hardware-adaptive training pipeline, probing local hardware,
+    synchronizing the virtual environment, and using the official PyTorch index repository.
 .EXAMPLE
     .\train.ps1 -Profile smoke-test
     .\train.ps1 -Profile balanced
     .\train.ps1 -Profile production
-    .\train.ps1 -Phases vae export -SliceLevel 2
-    .\train.ps1 -Profile balanced -UseActiveLearning -ChunkCurriculum
 #>
 param(
     [ValidateSet("smoke-test", "balanced", "production", "export-only", "custom")]
@@ -43,15 +41,19 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ScriptDir
 
-# Setup Python Virtual Environment and Requirements
+# Setup Python Virtual Environment and Paths
 $VenvPath = Join-Path $ScriptDir ".venv"
 $PythonExe = Join-Path $VenvPath "Scripts\python.exe"
 $RequirementsPath = Join-Path $ScriptDir "requirements.txt"
 
-if (-not (Test-Path $PythonExe)) {
-    Write-Host "[*] Python virtual environment (.venv) not found. Creating one..." -ForegroundColor Yellow
-    
-    # Locate system python command
+# 1. Ensure Virtual Environment Exists
+if (-not (Test-Path $PythonExe) -or $Fresh) {
+    if (Test-Path $VenvPath) {
+        Write-Host "[*] Clearing existing virtual environment for fresh provisioning..." -ForegroundColor Yellow
+        Remove-Item -Recurse -Force $VenvPath
+    }
+
+    Write-Host "[*] Creating Python virtual environment (.venv)..." -ForegroundColor Yellow
     $SysPython = "python"
     if (-not (Get-Command $SysPython -ErrorAction SilentlyContinue)) {
         $SysPython = "python3"
@@ -63,22 +65,39 @@ if (-not (Test-Path $PythonExe)) {
         Write-Error "Failed to create virtual environment using '$SysPython'. Ensure Python is installed and added to PATH."
         exit 1
     }
+}
 
-    Write-Host "[*] Upgrading pip inside virtual environment..." -ForegroundColor Yellow
-    & $PythonExe -m pip install --upgrade pip
+# 2. Hardware Probing & PyTorch Index Selection
+Write-Host "[*] Probing host hardware architecture..." -ForegroundColor Cyan
+$HasCuda = $false
+$TorchIndexUrl = "https://download.pytorch.org/whl/cpu"
 
-    if (Test-Path $RequirementsPath) {
-        Write-Host "[*] Installing dependencies from requirements.txt..." -ForegroundColor Yellow
-        & $PythonExe -m pip install -r $RequirementsPath
-    } else {
-        Write-Warning "[!] requirements.txt not found in project root. Skipping dependency installation."
+try {
+    if (Get-Command "nvidia-smi" -ErrorAction SilentlyContinue) {
+        $NvidiaSmiOutput = & nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>&1
+        if ($LASTEXITCODE -eq 0 -and $NvidiaSmiOutput) {
+            $HasCuda = $true
+            $TorchIndexUrl = "https://download.pytorch.org/whl/cu121"
+            Write-Host "[+] NVIDIA CUDA GPU detected. Target Index: $TorchIndexUrl" -ForegroundColor Green
+        }
     }
+} catch {
+    Write-Warning "[!] Could not query nvidia-smi. Defaulting to CPU backend index."
+}
+
+# 3. Synchronize Packages & Dependencies
+Write-Host "[*] Synchronizing virtual environment packages..." -ForegroundColor Cyan
+& $PythonExe -m pip install --upgrade pip setuptools wheel
+
+Write-Host "[*] Installing/updating PyTorch ecosystem backend..." -ForegroundColor Cyan
+& $PythonExe -m pip install --upgrade torch torchvision torchaudio --index-url $TorchIndexUrl
+
+if (Test-Path $RequirementsPath) {
+    Write-Host "[*] Synchronizing workspace dependencies from requirements.txt..." -ForegroundColor Cyan
+    # Pass --extra-index-url so pip resolves torch/torchaudio correctly if referenced in requirements.txt
+    & $PythonExe -m pip install -r $RequirementsPath --extra-index-url $TorchIndexUrl
 } else {
-    # Optional safety check: ensure requirements.txt changes are accounted for if needed
-    if (Test-Path $RequirementsPath) {
-        # Quick silent check or let pip handle caching/fulfillment
-        & $PythonExe -m pip install -q -r $RequirementsPath
-    }
+    Write-Warning "[!] requirements.txt not found in project root."
 }
 
 $ArgsList = @("-X", "utf8", "scripts\auto_train.py", "--profile", $Profile)
@@ -110,7 +129,7 @@ if ($LogFile) { $ArgsList += @("--log-file", $LogFile) }
 if ($Verbose) { $ArgsList += "--verbose" }
 if ($Quiet) { $ArgsList += "--quiet" }
 
-# Execute the deep learning training lifecycle pass with UTF-8 encoding stream
+# Execute training orchestrator
 $OutputEncoding = [System.Text.Encoding]::UTF8
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
