@@ -1,0 +1,43 @@
+[package]
+name = "app"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Application view controller, UI layout components, and state management"
+
+[lints]
+workspace = true
+
+[dependencies]
+eframe = { workspace = true }
+egui = { workspace = true, features = ["default_fonts"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+shared = { workspace = true }
+audio = { workspace = true }
+inference = { workspace = true }
+bson = { workspace = true }
+miniz_oxide = { workspace = true }
+base64 = { workspace = true }
+thiserror = { workspace = true }
+ron = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = { workspace = true }
+web-sys = { workspace = true, features = ["HtmlDocument", "Window", "Document", "Blob", "BlobPropertyBag", "Url", "HtmlAnchorElement", "Location", "Storage"] }
+js-sys = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+eframe = { workspace = true, features = ["x11", "wayland"] }
+
+[features]
+default = ["accesskit", "persistence", "wgpu"]
+accesskit = ["eframe/accesskit"]
+persistence = ["eframe/persistence"]
+wgpu = ["eframe/wgpu"]
+glow = ["eframe/glow"]
+

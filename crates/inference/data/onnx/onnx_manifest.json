@@ -1,0 +1,8 @@
+{
+  "format": "onnx",
+  "opset": 18,
+  "models": {
+    "encoder": "spatial_vae.onnx",
+    "mamba_moe": "mamba2_moe.onnx"
+  }
+}

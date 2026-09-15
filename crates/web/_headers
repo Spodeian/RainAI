@@ -1,0 +1,43 @@
+# Global Security and Base Policies for all routes
+/*
+  X-Frame-Options: SAMEORIGIN
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=(), interest-cohort=()
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+  Content-Security-Policy: default-src 'self' https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: https: https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; connect-src 'self' data: blob: https: https://cloudflareinsights.com; font-src 'self' data: https:; worker-src 'self' blob:; child-src 'self' blob:; manifest-src 'self'; frame-ancestors 'self'; base-uri 'self';
+
+# HTML Entrypoint: Must always revalidate with edge so atomic deployments take effect immediately
+/
+  Cache-Control: no-cache, no-store, must-revalidate, max-age=0
+
+/index.html
+  Cache-Control: no-cache, no-store, must-revalidate, max-age=0
+
+# Service Worker: Never cached so browser checks for deployment updates on every visit
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate, max-age=0
+  Content-Type: application/javascript; charset=utf-8
+
+# Progressive Web App Manifest & Static Assets
+/manifest.json
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+  Content-Type: application/manifest+json; charset=utf-8
+
+/favicon.ico
+  Cache-Control: public, max-age=604800, stale-while-revalidate=86400
+
+# WebAssembly Binaries: Immutable content-hashed binaries (cached indefinitely)
+/*.wasm
+  Cache-Control: public, max-age=31536000, immutable
+  Access-Control-Allow-Origin: *
+  Cross-Origin-Resource-Policy: cross-origin
+  Content-Type: application/wasm
+
+# Compiled & Bundled Assets: Immutable content-hashed JS and CSS bundles
+/*.js
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.css
+  Cache-Control: public, max-age=31536000, immutable

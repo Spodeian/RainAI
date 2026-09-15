@@ -1,0 +1,3073 @@
+{
+  "architecture": "Role-Anchored Progressive Slices (W = sum_i S_i)",
+  "audio": {
+    "sample_rate": 48000,
+    "channels": 4,
+    "format": "First-Order Ambisonics (FOA, ACN/SN3D)",
+    "channel_order": [
+      "W",
+      "Y",
+      "Z",
+      "X"
+    ],
+    "block_size": 128,
+    "target_buffer_ms": 40.0
+  },
+  "acoustic_anchor": {
+    "filename": "acoustic_anchor_fp32.bin",
+    "format": "FP32 Continuous Biquad & Spherical Harmonics",
+    "size_bytes": 140160,
+    "crc32": "0d57233f",
+    "sha256": "ad8a44650d1d3cc3b32d20d8a0c8a6cd00b1efdb27a0b76345f9533ac0c4497b"
+  },
+  "progressive_slices": [
+    {
+      "slice_index": 0,
+      "filename": "slice_0_ternary.bin",
+      "description": "Tier 0: Ternary 1.58-Bit (Instant startup < 500ms, addition-only)",
+      "chunk_size_bytes": 5701120,
+      "layers": {
+        "encoder.bi_mamba.conv_bwd": {
+          "shape": [
+            512,
+            1,
+            5
+          ],
+          "gamma": 0.7933743596076965,
+          "dtype": "int8_ternary",
+          "offset": 0,
+          "size_bytes": 2560
+        },
+        "encoder.bi_mamba.conv_fwd": {
+          "shape": [
+            512,
+            1,
+            5
+          ],
+          "gamma": 0.782931923866272,
+          "dtype": "int8_ternary",
+          "offset": 2560,
+          "size_bytes": 2560
+        },
+        "encoder.bi_mamba.fuse": {
+          "shape": [
+            512,
+            1024
+          ],
+          "gamma": 0.024734705686569214,
+          "dtype": "int8_ternary",
+          "offset": 5120,
+          "size_bytes": 524288
+        },
+        "encoder.cond_proj": {
+          "shape": [
+            512,
+            554
+          ],
+          "gamma": 0.03362156078219414,
+          "dtype": "int8_ternary",
+          "offset": 529408,
+          "size_bytes": 283648
+        },
+        "encoder.conv1": {
+          "shape": [
+            64,
+            4,
+            15
+          ],
+          "gamma": 0.39051878452301025,
+          "dtype": "int8_ternary",
+          "offset": 813056,
+          "size_bytes": 3840
+        },
+        "encoder.conv2": {
+          "shape": [
+            128,
+            64,
+            15
+          ],
+          "gamma": 0.09866051375865936,
+          "dtype": "int8_ternary",
+          "offset": 816896,
+          "size_bytes": 122880
+        },
+        "encoder.conv3": {
+          "shape": [
+            256,
+            128,
+            15
+          ],
+          "gamma": 0.06987760961055756,
+          "dtype": "int8_ternary",
+          "offset": 939776,
+          "size_bytes": 491520
+        },
+        "encoder.conv4": {
+          "shape": [
+            512,
+            256,
+            15
+          ],
+          "gamma": 0.0494595505297184,
+          "dtype": "int8_ternary",
+          "offset": 1431296,
+          "size_bytes": 1966080
+        },
+        "encoder.out_proj": {
+          "shape": [
+            64,
+            512,
+            3
+          ],
+          "gamma": 0.03500283136963844,
+          "dtype": "int8_ternary",
+          "offset": 3397376,
+          "size_bytes": 98304
+        },
+        "encoder.res_conv1": {
+          "shape": [
+            512,
+            512,
+            3
+          ],
+          "gamma": 0.03493108972907066,
+          "dtype": "int8_ternary",
+          "offset": 3495680,
+          "size_bytes": 786432
+        },
+        "encoder.res_conv2": {
+          "shape": [
+            512,
+            512,
+            3
+          ],
+          "gamma": 0.03490791097283363,
+          "dtype": "int8_ternary",
+          "offset": 4282112,
+          "size_bytes": 786432
+        },
+        "mamba.cond_proj": {
+          "shape": [
+            128,
+            554
+          ],
+          "gamma": 0.03360360488295555,
+          "dtype": "int8_ternary",
+          "offset": 5068544,
+          "size_bytes": 70912
+        },
+        "mamba.experts.0.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.06952311098575592,
+          "dtype": "int8_ternary",
+          "offset": 5139456,
+          "size_bytes": 8192
+        },
+        "mamba.experts.0.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.06914178282022476,
+          "dtype": "int8_ternary",
+          "offset": 5147648,
+          "size_bytes": 8192
+        },
+        "mamba.experts.0.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "gamma": 0.7860199213027954,
+          "dtype": "int8_ternary",
+          "offset": 5155840,
+          "size_bytes": 512
+        },
+        "mamba.experts.0.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "gamma": 0.06952729821205139,
+          "dtype": "int8_ternary",
+          "offset": 5156352,
+          "size_bytes": 32768
+        },
+        "mamba.experts.0.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "gamma": 0.07006173580884933,
+          "dtype": "int8_ternary",
+          "offset": 5189120,
+          "size_bytes": 16384
+        },
+        "mamba.experts.1.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.07022471725940704,
+          "dtype": "int8_ternary",
+          "offset": 5205504,
+          "size_bytes": 8192
+        },
+        "mamba.experts.1.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.06974417716264725,
+          "dtype": "int8_ternary",
+          "offset": 5213696,
+          "size_bytes": 8192
+        },
+        "mamba.experts.1.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "gamma": 0.8040640950202942,
+          "dtype": "int8_ternary",
+          "offset": 5221888,
+          "size_bytes": 512
+        },
+        "mamba.experts.1.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "gamma": 0.0698394775390625,
+          "dtype": "int8_ternary",
+          "offset": 5222400,
+          "size_bytes": 32768
+        },
+        "mamba.experts.1.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "gamma": 0.06966212391853333,
+          "dtype": "int8_ternary",
+          "offset": 5255168,
+          "size_bytes": 16384
+        },
+        "mamba.experts.2.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.0693495124578476,
+          "dtype": "int8_ternary",
+          "offset": 5271552,
+          "size_bytes": 8192
+        },
+        "mamba.experts.2.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.06963720917701721,
+          "dtype": "int8_ternary",
+          "offset": 5279744,
+          "size_bytes": 8192
+        },
+        "mamba.experts.2.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "gamma": 0.8401495814323425,
+          "dtype": "int8_ternary",
+          "offset": 5287936,
+          "size_bytes": 512
+        },
+        "mamba.experts.2.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "gamma": 0.06986583024263382,
+          "dtype": "int8_ternary",
+          "offset": 5288448,
+          "size_bytes": 32768
+        },
+        "mamba.experts.2.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "gamma": 0.06992176175117493,
+          "dtype": "int8_ternary",
+          "offset": 5321216,
+          "size_bytes": 16384
+        },
+        "mamba.experts.3.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.06989102065563202,
+          "dtype": "int8_ternary",
+          "offset": 5337600,
+          "size_bytes": 8192
+        },
+        "mamba.experts.3.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.06986295431852341,
+          "dtype": "int8_ternary",
+          "offset": 5345792,
+          "size_bytes": 8192
+        },
+        "mamba.experts.3.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "gamma": 0.7700154781341553,
+          "dtype": "int8_ternary",
+          "offset": 5353984,
+          "size_bytes": 512
+        },
+        "mamba.experts.3.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "gamma": 0.07024252414703369,
+          "dtype": "int8_ternary",
+          "offset": 5354496,
+          "size_bytes": 32768
+        },
+        "mamba.experts.3.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "gamma": 0.06910982728004456,
+          "dtype": "int8_ternary",
+          "offset": 5387264,
+          "size_bytes": 16384
+        },
+        "mamba.experts.4.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.07027311623096466,
+          "dtype": "int8_ternary",
+          "offset": 5403648,
+          "size_bytes": 8192
+        },
+        "mamba.experts.4.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.06907981634140015,
+          "dtype": "int8_ternary",
+          "offset": 5411840,
+          "size_bytes": 8192
+        },
+        "mamba.experts.4.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "gamma": 0.760649561882019,
+          "dtype": "int8_ternary",
+          "offset": 5420032,
+          "size_bytes": 512
+        },
+        "mamba.experts.4.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "gamma": 0.06992568075656891,
+          "dtype": "int8_ternary",
+          "offset": 5420544,
+          "size_bytes": 32768
+        },
+        "mamba.experts.4.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "gamma": 0.06947494298219681,
+          "dtype": "int8_ternary",
+          "offset": 5453312,
+          "size_bytes": 16384
+        },
+        "mamba.experts.5.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.0701708123087883,
+          "dtype": "int8_ternary",
+          "offset": 5469696,
+          "size_bytes": 8192
+        },
+        "mamba.experts.5.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.07044801115989685,
+          "dtype": "int8_ternary",
+          "offset": 5477888,
+          "size_bytes": 8192
+        },
+        "mamba.experts.5.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "gamma": 0.765519917011261,
+          "dtype": "int8_ternary",
+          "offset": 5486080,
+          "size_bytes": 512
+        },
+        "mamba.experts.5.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "gamma": 0.0695606917142868,
+          "dtype": "int8_ternary",
+          "offset": 5486592,
+          "size_bytes": 32768
+        },
+        "mamba.experts.5.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "gamma": 0.06964752078056335,
+          "dtype": "int8_ternary",
+          "offset": 5519360,
+          "size_bytes": 16384
+        },
+        "mamba.experts.6.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.06990166753530502,
+          "dtype": "int8_ternary",
+          "offset": 5535744,
+          "size_bytes": 8192
+        },
+        "mamba.experts.6.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.07067254930734634,
+          "dtype": "int8_ternary",
+          "offset": 5543936,
+          "size_bytes": 8192
+        },
+        "mamba.experts.6.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "gamma": 0.8115166425704956,
+          "dtype": "int8_ternary",
+          "offset": 5552128,
+          "size_bytes": 512
+        },
+        "mamba.experts.6.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "gamma": 0.06946961581707001,
+          "dtype": "int8_ternary",
+          "offset": 5552640,
+          "size_bytes": 32768
+        },
+        "mamba.experts.6.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "gamma": 0.07070372253656387,
+          "dtype": "int8_ternary",
+          "offset": 5585408,
+          "size_bytes": 16384
+        },
+        "mamba.experts.7.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.06969846785068512,
+          "dtype": "int8_ternary",
+          "offset": 5601792,
+          "size_bytes": 8192
+        },
+        "mamba.experts.7.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.06913374364376068,
+          "dtype": "int8_ternary",
+          "offset": 5609984,
+          "size_bytes": 8192
+        },
+        "mamba.experts.7.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "gamma": 0.8070400953292847,
+          "dtype": "int8_ternary",
+          "offset": 5618176,
+          "size_bytes": 512
+        },
+        "mamba.experts.7.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "gamma": 0.07024280726909637,
+          "dtype": "int8_ternary",
+          "offset": 5618688,
+          "size_bytes": 32768
+        },
+        "mamba.experts.7.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "gamma": 0.06886118650436401,
+          "dtype": "int8_ternary",
+          "offset": 5651456,
+          "size_bytes": 16384
+        },
+        "mamba.latent_proj": {
+          "shape": [
+            128,
+            64
+          ],
+          "gamma": 0.09944024682044983,
+          "dtype": "int8_ternary",
+          "offset": 5667840,
+          "size_bytes": 8192
+        },
+        "mamba.log_var_head": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.07019738852977753,
+          "dtype": "int8_ternary",
+          "offset": 5676032,
+          "size_bytes": 8192
+        },
+        "mamba.mu_head": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.07037119567394257,
+          "dtype": "int8_ternary",
+          "offset": 5684224,
+          "size_bytes": 8192
+        },
+        "mamba.router_linear1": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.07011492550373077,
+          "dtype": "int8_ternary",
+          "offset": 5692416,
+          "size_bytes": 8192
+        },
+        "mamba.router_linear2": {
+          "shape": [
+            8,
+            64
+          ],
+          "gamma": 0.09665217995643616,
+          "dtype": "int8_ternary",
+          "offset": 5700608,
+          "size_bytes": 512
+        }
+      }
+    },
+    {
+      "slice_index": 1,
+      "filename": "slice_1_mobile_int4.bin",
+      "description": "Tier 1: INT4 Mobile Quality (Low bandwidth / cellular)",
+      "chunk_size_bytes": 5701120,
+      "layers": {
+        "encoder.bi_mamba.conv_bwd": {
+          "shape": [
+            512,
+            1,
+            5
+          ],
+          "scale": 0.006663761101663113,
+          "dtype": "int8_delta",
+          "offset": 0,
+          "size_bytes": 2560
+        },
+        "encoder.bi_mamba.conv_fwd": {
+          "shape": [
+            512,
+            1,
+            5
+          ],
+          "scale": 0.006115518510341644,
+          "dtype": "int8_delta",
+          "offset": 2560,
+          "size_bytes": 2560
+        },
+        "encoder.bi_mamba.fuse": {
+          "shape": [
+            512,
+            1024
+          ],
+          "scale": 0.00025603981339372694,
+          "dtype": "int8_delta",
+          "offset": 5120,
+          "size_bytes": 524288
+        },
+        "encoder.cond_proj": {
+          "shape": [
+            512,
+            554
+          ],
+          "scale": 0.00034483103081583977,
+          "dtype": "int8_delta",
+          "offset": 529408,
+          "size_bytes": 283648
+        },
+        "encoder.conv1": {
+          "shape": [
+            64,
+            4,
+            15
+          ],
+          "scale": 0.0029769407119601965,
+          "dtype": "int8_delta",
+          "offset": 813056,
+          "size_bytes": 3840
+        },
+        "encoder.conv2": {
+          "shape": [
+            128,
+            64,
+            15
+          ],
+          "scale": 0.000931307440623641,
+          "dtype": "int8_delta",
+          "offset": 816896,
+          "size_bytes": 122880
+        },
+        "encoder.conv3": {
+          "shape": [
+            256,
+            128,
+            15
+          ],
+          "scale": 0.000705595244653523,
+          "dtype": "int8_delta",
+          "offset": 939776,
+          "size_bytes": 491520
+        },
+        "encoder.conv4": {
+          "shape": [
+            512,
+            256,
+            15
+          ],
+          "scale": 0.000534629391040653,
+          "dtype": "int8_delta",
+          "offset": 1431296,
+          "size_bytes": 1966080
+        },
+        "encoder.out_proj": {
+          "shape": [
+            64,
+            512,
+            3
+          ],
+          "scale": 0.0003176643222104758,
+          "dtype": "int8_delta",
+          "offset": 3397376,
+          "size_bytes": 98304
+        },
+        "encoder.res_conv1": {
+          "shape": [
+            512,
+            512,
+            3
+          ],
+          "scale": 0.0003687459684442729,
+          "dtype": "int8_delta",
+          "offset": 3495680,
+          "size_bytes": 786432
+        },
+        "encoder.res_conv2": {
+          "shape": [
+            512,
+            512,
+            3
+          ],
+          "scale": 0.00036692575667984784,
+          "dtype": "int8_delta",
+          "offset": 4282112,
+          "size_bytes": 786432
+        },
+        "mamba.cond_proj": {
+          "shape": [
+            128,
+            554
+          ],
+          "scale": 0.00030845339642837644,
+          "dtype": "int8_delta",
+          "offset": 5068544,
+          "size_bytes": 70912
+        },
+        "mamba.experts.0.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0006847874028608203,
+          "dtype": "int8_delta",
+          "offset": 5139456,
+          "size_bytes": 8192
+        },
+        "mamba.experts.0.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0006026436458341777,
+          "dtype": "int8_delta",
+          "offset": 5147648,
+          "size_bytes": 8192
+        },
+        "mamba.experts.0.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.006145026534795761,
+          "dtype": "int8_delta",
+          "offset": 5155840,
+          "size_bytes": 512
+        },
+        "mamba.experts.0.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.0006157461903057992,
+          "dtype": "int8_delta",
+          "offset": 5156352,
+          "size_bytes": 32768
+        },
+        "mamba.experts.0.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.0006127057131379843,
+          "dtype": "int8_delta",
+          "offset": 5189120,
+          "size_bytes": 16384
+        },
+        "mamba.experts.1.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0006129461689852178,
+          "dtype": "int8_delta",
+          "offset": 5205504,
+          "size_bytes": 8192
+        },
+        "mamba.experts.1.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0005076765664853156,
+          "dtype": "int8_delta",
+          "offset": 5213696,
+          "size_bytes": 8192
+        },
+        "mamba.experts.1.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.006098544225096703,
+          "dtype": "int8_delta",
+          "offset": 5221888,
+          "size_bytes": 512
+        },
+        "mamba.experts.1.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.0006903701578266919,
+          "dtype": "int8_delta",
+          "offset": 5222400,
+          "size_bytes": 32768
+        },
+        "mamba.experts.1.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.0006106490618549287,
+          "dtype": "int8_delta",
+          "offset": 5255168,
+          "size_bytes": 16384
+        },
+        "mamba.experts.2.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.000541668152436614,
+          "dtype": "int8_delta",
+          "offset": 5271552,
+          "size_bytes": 8192
+        },
+        "mamba.experts.2.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0006022563320584595,
+          "dtype": "int8_delta",
+          "offset": 5279744,
+          "size_bytes": 8192
+        },
+        "mamba.experts.2.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.00546614732593298,
+          "dtype": "int8_delta",
+          "offset": 5287936,
+          "size_bytes": 512
+        },
+        "mamba.experts.2.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.000797584536485374,
+          "dtype": "int8_delta",
+          "offset": 5288448,
+          "size_bytes": 32768
+        },
+        "mamba.experts.2.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.0006960426107980311,
+          "dtype": "int8_delta",
+          "offset": 5321216,
+          "size_bytes": 16384
+        },
+        "mamba.experts.3.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0006050671800039709,
+          "dtype": "int8_delta",
+          "offset": 5337600,
+          "size_bytes": 8192
+        },
+        "mamba.experts.3.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0005841482779942453,
+          "dtype": "int8_delta",
+          "offset": 5345792,
+          "size_bytes": 8192
+        },
+        "mamba.experts.3.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.006588867399841547,
+          "dtype": "int8_delta",
+          "offset": 5353984,
+          "size_bytes": 512
+        },
+        "mamba.experts.3.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.0005654751439578831,
+          "dtype": "int8_delta",
+          "offset": 5354496,
+          "size_bytes": 32768
+        },
+        "mamba.experts.3.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.0006023786845616996,
+          "dtype": "int8_delta",
+          "offset": 5387264,
+          "size_bytes": 16384
+        },
+        "mamba.experts.4.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0006931855459697545,
+          "dtype": "int8_delta",
+          "offset": 5403648,
+          "size_bytes": 8192
+        },
+        "mamba.experts.4.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0006469947402365506,
+          "dtype": "int8_delta",
+          "offset": 5411840,
+          "size_bytes": 8192
+        },
+        "mamba.experts.4.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.006109706126153469,
+          "dtype": "int8_delta",
+          "offset": 5420032,
+          "size_bytes": 512
+        },
+        "mamba.experts.4.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.0006285313866101205,
+          "dtype": "int8_delta",
+          "offset": 5420544,
+          "size_bytes": 32768
+        },
+        "mamba.experts.4.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.0006916989223100245,
+          "dtype": "int8_delta",
+          "offset": 5453312,
+          "size_bytes": 16384
+        },
+        "mamba.experts.5.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0005883441190235317,
+          "dtype": "int8_delta",
+          "offset": 5469696,
+          "size_bytes": 8192
+        },
+        "mamba.experts.5.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0006332523189485073,
+          "dtype": "int8_delta",
+          "offset": 5477888,
+          "size_bytes": 8192
+        },
+        "mamba.experts.5.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.005275371950119734,
+          "dtype": "int8_delta",
+          "offset": 5486080,
+          "size_bytes": 512
+        },
+        "mamba.experts.5.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.0006454429822042584,
+          "dtype": "int8_delta",
+          "offset": 5486592,
+          "size_bytes": 32768
+        },
+        "mamba.experts.5.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.0006637814803980291,
+          "dtype": "int8_delta",
+          "offset": 5519360,
+          "size_bytes": 16384
+        },
+        "mamba.experts.6.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0006491642561741173,
+          "dtype": "int8_delta",
+          "offset": 5535744,
+          "size_bytes": 8192
+        },
+        "mamba.experts.6.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0006802853313274682,
+          "dtype": "int8_delta",
+          "offset": 5543936,
+          "size_bytes": 8192
+        },
+        "mamba.experts.6.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.005311849992722273,
+          "dtype": "int8_delta",
+          "offset": 5552128,
+          "size_bytes": 512
+        },
+        "mamba.experts.6.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.0006197603070177138,
+          "dtype": "int8_delta",
+          "offset": 5552640,
+          "size_bytes": 32768
+        },
+        "mamba.experts.6.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.0005736678722314537,
+          "dtype": "int8_delta",
+          "offset": 5585408,
+          "size_bytes": 16384
+        },
+        "mamba.experts.7.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0005203380715101957,
+          "dtype": "int8_delta",
+          "offset": 5601792,
+          "size_bytes": 8192
+        },
+        "mamba.experts.7.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0005663243937306106,
+          "dtype": "int8_delta",
+          "offset": 5609984,
+          "size_bytes": 8192
+        },
+        "mamba.experts.7.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.005357682704925537,
+          "dtype": "int8_delta",
+          "offset": 5618176,
+          "size_bytes": 512
+        },
+        "mamba.experts.7.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.0005906950100325048,
+          "dtype": "int8_delta",
+          "offset": 5618688,
+          "size_bytes": 32768
+        },
+        "mamba.experts.7.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.0005839159712195396,
+          "dtype": "int8_delta",
+          "offset": 5651456,
+          "size_bytes": 16384
+        },
+        "mamba.latent_proj": {
+          "shape": [
+            128,
+            64
+          ],
+          "scale": 0.000810544122941792,
+          "dtype": "int8_delta",
+          "offset": 5667840,
+          "size_bytes": 8192
+        },
+        "mamba.log_var_head": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0005688154487870634,
+          "dtype": "int8_delta",
+          "offset": 5676032,
+          "size_bytes": 8192
+        },
+        "mamba.mu_head": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0005960363196209073,
+          "dtype": "int8_delta",
+          "offset": 5684224,
+          "size_bytes": 8192
+        },
+        "mamba.router_linear1": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0008073716307990253,
+          "dtype": "int8_delta",
+          "offset": 5692416,
+          "size_bytes": 8192
+        },
+        "mamba.router_linear2": {
+          "shape": [
+            8,
+            64
+          ],
+          "scale": 0.000792361912317574,
+          "dtype": "int8_delta",
+          "offset": 5700608,
+          "size_bytes": 512
+        }
+      }
+    },
+    {
+      "slice_index": 2,
+      "filename": "slice_2_standard_int8.bin",
+      "description": "Tier 2: INT8 / BF16 Adaptive Web Default (~95% perceptual equivalence)",
+      "chunk_size_bytes": 5701120,
+      "layers": {
+        "encoder.bi_mamba.conv_bwd": {
+          "shape": [
+            512,
+            1,
+            5
+          ],
+          "scale": 0.0032193006481975317,
+          "dtype": "int8_delta",
+          "offset": 0,
+          "size_bytes": 2560
+        },
+        "encoder.bi_mamba.conv_fwd": {
+          "shape": [
+            512,
+            1,
+            5
+          ],
+          "scale": 0.0028424281626939774,
+          "dtype": "int8_delta",
+          "offset": 2560,
+          "size_bytes": 2560
+        },
+        "encoder.bi_mamba.fuse": {
+          "shape": [
+            512,
+            1024
+          ],
+          "scale": 0.00014579576964024454,
+          "dtype": "int8_delta",
+          "offset": 5120,
+          "size_bytes": 524288
+        },
+        "encoder.cond_proj": {
+          "shape": [
+            512,
+            554
+          ],
+          "scale": 0.00016906073142308742,
+          "dtype": "int8_delta",
+          "offset": 529408,
+          "size_bytes": 283648
+        },
+        "encoder.conv1": {
+          "shape": [
+            64,
+            4,
+            15
+          ],
+          "scale": 0.0015444271266460419,
+          "dtype": "int8_delta",
+          "offset": 813056,
+          "size_bytes": 3840
+        },
+        "encoder.conv2": {
+          "shape": [
+            128,
+            64,
+            15
+          ],
+          "scale": 0.0004878990584984422,
+          "dtype": "int8_delta",
+          "offset": 816896,
+          "size_bytes": 122880
+        },
+        "encoder.conv3": {
+          "shape": [
+            256,
+            128,
+            15
+          ],
+          "scale": 0.00034798544947989285,
+          "dtype": "int8_delta",
+          "offset": 939776,
+          "size_bytes": 491520
+        },
+        "encoder.conv4": {
+          "shape": [
+            512,
+            256,
+            15
+          ],
+          "scale": 0.00027307996060699224,
+          "dtype": "int8_delta",
+          "offset": 1431296,
+          "size_bytes": 1966080
+        },
+        "encoder.out_proj": {
+          "shape": [
+            64,
+            512,
+            3
+          ],
+          "scale": 0.0001700445864116773,
+          "dtype": "int8_delta",
+          "offset": 3397376,
+          "size_bytes": 98304
+        },
+        "encoder.res_conv1": {
+          "shape": [
+            512,
+            512,
+            3
+          ],
+          "scale": 0.00017674943956080824,
+          "dtype": "int8_delta",
+          "offset": 3495680,
+          "size_bytes": 786432
+        },
+        "encoder.res_conv2": {
+          "shape": [
+            512,
+            512,
+            3
+          ],
+          "scale": 0.0001831556437537074,
+          "dtype": "int8_delta",
+          "offset": 4282112,
+          "size_bytes": 786432
+        },
+        "mamba.cond_proj": {
+          "shape": [
+            128,
+            554
+          ],
+          "scale": 0.0001575647183926776,
+          "dtype": "int8_delta",
+          "offset": 5068544,
+          "size_bytes": 70912
+        },
+        "mamba.experts.0.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.00030581647297367454,
+          "dtype": "int8_delta",
+          "offset": 5139456,
+          "size_bytes": 8192
+        },
+        "mamba.experts.0.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0003475976118352264,
+          "dtype": "int8_delta",
+          "offset": 5147648,
+          "size_bytes": 8192
+        },
+        "mamba.experts.0.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.0023527394514530897,
+          "dtype": "int8_delta",
+          "offset": 5155840,
+          "size_bytes": 512
+        },
+        "mamba.experts.0.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.00032078303047455847,
+          "dtype": "int8_delta",
+          "offset": 5156352,
+          "size_bytes": 32768
+        },
+        "mamba.experts.0.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.0003107261727564037,
+          "dtype": "int8_delta",
+          "offset": 5189120,
+          "size_bytes": 16384
+        },
+        "mamba.experts.1.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.00028413761174306273,
+          "dtype": "int8_delta",
+          "offset": 5205504,
+          "size_bytes": 8192
+        },
+        "mamba.experts.1.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.00028003694023936987,
+          "dtype": "int8_delta",
+          "offset": 5213696,
+          "size_bytes": 8192
+        },
+        "mamba.experts.1.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.0026215421967208385,
+          "dtype": "int8_delta",
+          "offset": 5221888,
+          "size_bytes": 512
+        },
+        "mamba.experts.1.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.0003084631753154099,
+          "dtype": "int8_delta",
+          "offset": 5222400,
+          "size_bytes": 32768
+        },
+        "mamba.experts.1.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.0002989771601278335,
+          "dtype": "int8_delta",
+          "offset": 5255168,
+          "size_bytes": 16384
+        },
+        "mamba.experts.2.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0002792700252030045,
+          "dtype": "int8_delta",
+          "offset": 5271552,
+          "size_bytes": 8192
+        },
+        "mamba.experts.2.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0003050013037864119,
+          "dtype": "int8_delta",
+          "offset": 5279744,
+          "size_bytes": 8192
+        },
+        "mamba.experts.2.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.0029705099295824766,
+          "dtype": "int8_delta",
+          "offset": 5287936,
+          "size_bytes": 512
+        },
+        "mamba.experts.2.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.0003146592353004962,
+          "dtype": "int8_delta",
+          "offset": 5288448,
+          "size_bytes": 32768
+        },
+        "mamba.experts.2.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.00032377708703279495,
+          "dtype": "int8_delta",
+          "offset": 5321216,
+          "size_bytes": 16384
+        },
+        "mamba.experts.3.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.00026020838413387537,
+          "dtype": "int8_delta",
+          "offset": 5337600,
+          "size_bytes": 8192
+        },
+        "mamba.experts.3.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0002612487296573818,
+          "dtype": "int8_delta",
+          "offset": 5345792,
+          "size_bytes": 8192
+        },
+        "mamba.experts.3.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.0028098842594772577,
+          "dtype": "int8_delta",
+          "offset": 5353984,
+          "size_bytes": 512
+        },
+        "mamba.experts.3.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.00029368652030825615,
+          "dtype": "int8_delta",
+          "offset": 5354496,
+          "size_bytes": 32768
+        },
+        "mamba.experts.3.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.00031280791154131293,
+          "dtype": "int8_delta",
+          "offset": 5387264,
+          "size_bytes": 16384
+        },
+        "mamba.experts.4.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.00033989359508268535,
+          "dtype": "int8_delta",
+          "offset": 5403648,
+          "size_bytes": 8192
+        },
+        "mamba.experts.4.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.00026609236374497414,
+          "dtype": "int8_delta",
+          "offset": 5411840,
+          "size_bytes": 8192
+        },
+        "mamba.experts.4.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.002374871401116252,
+          "dtype": "int8_delta",
+          "offset": 5420032,
+          "size_bytes": 512
+        },
+        "mamba.experts.4.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.00030859236721880734,
+          "dtype": "int8_delta",
+          "offset": 5420544,
+          "size_bytes": 32768
+        },
+        "mamba.experts.4.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.0003045532794203609,
+          "dtype": "int8_delta",
+          "offset": 5453312,
+          "size_bytes": 16384
+        },
+        "mamba.experts.5.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0002730361884459853,
+          "dtype": "int8_delta",
+          "offset": 5469696,
+          "size_bytes": 8192
+        },
+        "mamba.experts.5.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.00026180068380199373,
+          "dtype": "int8_delta",
+          "offset": 5477888,
+          "size_bytes": 8192
+        },
+        "mamba.experts.5.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.003004765138030052,
+          "dtype": "int8_delta",
+          "offset": 5486080,
+          "size_bytes": 512
+        },
+        "mamba.experts.5.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.0003176779136992991,
+          "dtype": "int8_delta",
+          "offset": 5486592,
+          "size_bytes": 32768
+        },
+        "mamba.experts.5.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.0003024851612281054,
+          "dtype": "int8_delta",
+          "offset": 5519360,
+          "size_bytes": 16384
+        },
+        "mamba.experts.6.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.00031165708787739277,
+          "dtype": "int8_delta",
+          "offset": 5535744,
+          "size_bytes": 8192
+        },
+        "mamba.experts.6.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.00031637793290428817,
+          "dtype": "int8_delta",
+          "offset": 5543936,
+          "size_bytes": 8192
+        },
+        "mamba.experts.6.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.002555512823164463,
+          "dtype": "int8_delta",
+          "offset": 5552128,
+          "size_bytes": 512
+        },
+        "mamba.experts.6.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.0002923619467765093,
+          "dtype": "int8_delta",
+          "offset": 5552640,
+          "size_bytes": 32768
+        },
+        "mamba.experts.6.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.0002975700481329113,
+          "dtype": "int8_delta",
+          "offset": 5585408,
+          "size_bytes": 16384
+        },
+        "mamba.experts.7.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0002566137700341642,
+          "dtype": "int8_delta",
+          "offset": 5601792,
+          "size_bytes": 8192
+        },
+        "mamba.experts.7.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.000289810704998672,
+          "dtype": "int8_delta",
+          "offset": 5609984,
+          "size_bytes": 8192
+        },
+        "mamba.experts.7.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.002657032571732998,
+          "dtype": "int8_delta",
+          "offset": 5618176,
+          "size_bytes": 512
+        },
+        "mamba.experts.7.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.00031802550074644387,
+          "dtype": "int8_delta",
+          "offset": 5618688,
+          "size_bytes": 32768
+        },
+        "mamba.experts.7.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.0002991973306052387,
+          "dtype": "int8_delta",
+          "offset": 5651456,
+          "size_bytes": 16384
+        },
+        "mamba.latent_proj": {
+          "shape": [
+            128,
+            64
+          ],
+          "scale": 0.00045063995639793575,
+          "dtype": "int8_delta",
+          "offset": 5667840,
+          "size_bytes": 8192
+        },
+        "mamba.log_var_head": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.00027327288989908993,
+          "dtype": "int8_delta",
+          "offset": 5676032,
+          "size_bytes": 8192
+        },
+        "mamba.mu_head": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0002787002013064921,
+          "dtype": "int8_delta",
+          "offset": 5684224,
+          "size_bytes": 8192
+        },
+        "mamba.router_linear1": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0002691347326617688,
+          "dtype": "int8_delta",
+          "offset": 5692416,
+          "size_bytes": 8192
+        },
+        "mamba.router_linear2": {
+          "shape": [
+            8,
+            64
+          ],
+          "scale": 0.0003370970662217587,
+          "dtype": "int8_delta",
+          "offset": 5700608,
+          "size_bytes": 512
+        }
+      }
+    },
+    {
+      "slice_index": 3,
+      "filename": "slice_3_studio_int16.bin",
+      "description": "Tier 3: INT16 / FP16 Studio High-Fidelity",
+      "chunk_size_bytes": 11402240,
+      "layers": {
+        "encoder.bi_mamba.conv_bwd": {
+          "shape": [
+            512,
+            1,
+            5
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 0,
+          "size_bytes": 5120
+        },
+        "encoder.bi_mamba.conv_fwd": {
+          "shape": [
+            512,
+            1,
+            5
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 5120,
+          "size_bytes": 5120
+        },
+        "encoder.bi_mamba.fuse": {
+          "shape": [
+            512,
+            1024
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10240,
+          "size_bytes": 1048576
+        },
+        "encoder.cond_proj": {
+          "shape": [
+            512,
+            554
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 1058816,
+          "size_bytes": 567296
+        },
+        "encoder.conv1": {
+          "shape": [
+            64,
+            4,
+            15
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 1626112,
+          "size_bytes": 7680
+        },
+        "encoder.conv2": {
+          "shape": [
+            128,
+            64,
+            15
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 1633792,
+          "size_bytes": 245760
+        },
+        "encoder.conv3": {
+          "shape": [
+            256,
+            128,
+            15
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 1879552,
+          "size_bytes": 983040
+        },
+        "encoder.conv4": {
+          "shape": [
+            512,
+            256,
+            15
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 2862592,
+          "size_bytes": 3932160
+        },
+        "encoder.out_proj": {
+          "shape": [
+            64,
+            512,
+            3
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 6794752,
+          "size_bytes": 196608
+        },
+        "encoder.res_conv1": {
+          "shape": [
+            512,
+            512,
+            3
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 6991360,
+          "size_bytes": 1572864
+        },
+        "encoder.res_conv2": {
+          "shape": [
+            512,
+            512,
+            3
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 8564224,
+          "size_bytes": 1572864
+        },
+        "mamba.cond_proj": {
+          "shape": [
+            128,
+            554
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10137088,
+          "size_bytes": 141824
+        },
+        "mamba.experts.0.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10278912,
+          "size_bytes": 16384
+        },
+        "mamba.experts.0.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10295296,
+          "size_bytes": 16384
+        },
+        "mamba.experts.0.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10311680,
+          "size_bytes": 1024
+        },
+        "mamba.experts.0.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10312704,
+          "size_bytes": 65536
+        },
+        "mamba.experts.0.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10378240,
+          "size_bytes": 32768
+        },
+        "mamba.experts.1.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10411008,
+          "size_bytes": 16384
+        },
+        "mamba.experts.1.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10427392,
+          "size_bytes": 16384
+        },
+        "mamba.experts.1.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10443776,
+          "size_bytes": 1024
+        },
+        "mamba.experts.1.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10444800,
+          "size_bytes": 65536
+        },
+        "mamba.experts.1.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10510336,
+          "size_bytes": 32768
+        },
+        "mamba.experts.2.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10543104,
+          "size_bytes": 16384
+        },
+        "mamba.experts.2.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10559488,
+          "size_bytes": 16384
+        },
+        "mamba.experts.2.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10575872,
+          "size_bytes": 1024
+        },
+        "mamba.experts.2.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10576896,
+          "size_bytes": 65536
+        },
+        "mamba.experts.2.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10642432,
+          "size_bytes": 32768
+        },
+        "mamba.experts.3.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10675200,
+          "size_bytes": 16384
+        },
+        "mamba.experts.3.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10691584,
+          "size_bytes": 16384
+        },
+        "mamba.experts.3.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10707968,
+          "size_bytes": 1024
+        },
+        "mamba.experts.3.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10708992,
+          "size_bytes": 65536
+        },
+        "mamba.experts.3.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10774528,
+          "size_bytes": 32768
+        },
+        "mamba.experts.4.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10807296,
+          "size_bytes": 16384
+        },
+        "mamba.experts.4.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10823680,
+          "size_bytes": 16384
+        },
+        "mamba.experts.4.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10840064,
+          "size_bytes": 1024
+        },
+        "mamba.experts.4.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10841088,
+          "size_bytes": 65536
+        },
+        "mamba.experts.4.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10906624,
+          "size_bytes": 32768
+        },
+        "mamba.experts.5.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10939392,
+          "size_bytes": 16384
+        },
+        "mamba.experts.5.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10955776,
+          "size_bytes": 16384
+        },
+        "mamba.experts.5.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10972160,
+          "size_bytes": 1024
+        },
+        "mamba.experts.5.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10973184,
+          "size_bytes": 65536
+        },
+        "mamba.experts.5.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11038720,
+          "size_bytes": 32768
+        },
+        "mamba.experts.6.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11071488,
+          "size_bytes": 16384
+        },
+        "mamba.experts.6.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11087872,
+          "size_bytes": 16384
+        },
+        "mamba.experts.6.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11104256,
+          "size_bytes": 1024
+        },
+        "mamba.experts.6.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11105280,
+          "size_bytes": 65536
+        },
+        "mamba.experts.6.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11170816,
+          "size_bytes": 32768
+        },
+        "mamba.experts.7.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11203584,
+          "size_bytes": 16384
+        },
+        "mamba.experts.7.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11219968,
+          "size_bytes": 16384
+        },
+        "mamba.experts.7.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11236352,
+          "size_bytes": 1024
+        },
+        "mamba.experts.7.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11237376,
+          "size_bytes": 65536
+        },
+        "mamba.experts.7.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11302912,
+          "size_bytes": 32768
+        },
+        "mamba.latent_proj": {
+          "shape": [
+            128,
+            64
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11335680,
+          "size_bytes": 16384
+        },
+        "mamba.log_var_head": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11352064,
+          "size_bytes": 16384
+        },
+        "mamba.mu_head": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11368448,
+          "size_bytes": 16384
+        },
+        "mamba.router_linear1": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11384832,
+          "size_bytes": 16384
+        },
+        "mamba.router_linear2": {
+          "shape": [
+            8,
+            64
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11401216,
+          "size_bytes": 1024
+        }
+      }
+    },
+    {
+      "slice_index": 4,
+      "filename": "slice_4_master_fp32.bin",
+      "description": "Tier 4: Uncompressed FP32 Master Masterpiece",
+      "chunk_size_bytes": 22804480,
+      "layers": {
+        "encoder.bi_mamba.conv_bwd": {
+          "shape": [
+            512,
+            1,
+            5
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 0,
+          "size_bytes": 10240
+        },
+        "encoder.bi_mamba.conv_fwd": {
+          "shape": [
+            512,
+            1,
+            5
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 10240,
+          "size_bytes": 10240
+        },
+        "encoder.bi_mamba.fuse": {
+          "shape": [
+            512,
+            1024
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 20480,
+          "size_bytes": 2097152
+        },
+        "encoder.cond_proj": {
+          "shape": [
+            512,
+            554
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 2117632,
+          "size_bytes": 1134592
+        },
+        "encoder.conv1": {
+          "shape": [
+            64,
+            4,
+            15
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 3252224,
+          "size_bytes": 15360
+        },
+        "encoder.conv2": {
+          "shape": [
+            128,
+            64,
+            15
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 3267584,
+          "size_bytes": 491520
+        },
+        "encoder.conv3": {
+          "shape": [
+            256,
+            128,
+            15
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 3759104,
+          "size_bytes": 1966080
+        },
+        "encoder.conv4": {
+          "shape": [
+            512,
+            256,
+            15
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 5725184,
+          "size_bytes": 7864320
+        },
+        "encoder.out_proj": {
+          "shape": [
+            64,
+            512,
+            3
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 13589504,
+          "size_bytes": 393216
+        },
+        "encoder.res_conv1": {
+          "shape": [
+            512,
+            512,
+            3
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 13982720,
+          "size_bytes": 3145728
+        },
+        "encoder.res_conv2": {
+          "shape": [
+            512,
+            512,
+            3
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 17128448,
+          "size_bytes": 3145728
+        },
+        "mamba.cond_proj": {
+          "shape": [
+            128,
+            554
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 20274176,
+          "size_bytes": 283648
+        },
+        "mamba.experts.0.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 20557824,
+          "size_bytes": 32768
+        },
+        "mamba.experts.0.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 20590592,
+          "size_bytes": 32768
+        },
+        "mamba.experts.0.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 20623360,
+          "size_bytes": 2048
+        },
+        "mamba.experts.0.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 20625408,
+          "size_bytes": 131072
+        },
+        "mamba.experts.0.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 20756480,
+          "size_bytes": 65536
+        },
+        "mamba.experts.1.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 20822016,
+          "size_bytes": 32768
+        },
+        "mamba.experts.1.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 20854784,
+          "size_bytes": 32768
+        },
+        "mamba.experts.1.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 20887552,
+          "size_bytes": 2048
+        },
+        "mamba.experts.1.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 20889600,
+          "size_bytes": 131072
+        },
+        "mamba.experts.1.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21020672,
+          "size_bytes": 65536
+        },
+        "mamba.experts.2.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21086208,
+          "size_bytes": 32768
+        },
+        "mamba.experts.2.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21118976,
+          "size_bytes": 32768
+        },
+        "mamba.experts.2.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21151744,
+          "size_bytes": 2048
+        },
+        "mamba.experts.2.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21153792,
+          "size_bytes": 131072
+        },
+        "mamba.experts.2.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21284864,
+          "size_bytes": 65536
+        },
+        "mamba.experts.3.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21350400,
+          "size_bytes": 32768
+        },
+        "mamba.experts.3.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21383168,
+          "size_bytes": 32768
+        },
+        "mamba.experts.3.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21415936,
+          "size_bytes": 2048
+        },
+        "mamba.experts.3.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21417984,
+          "size_bytes": 131072
+        },
+        "mamba.experts.3.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21549056,
+          "size_bytes": 65536
+        },
+        "mamba.experts.4.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21614592,
+          "size_bytes": 32768
+        },
+        "mamba.experts.4.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21647360,
+          "size_bytes": 32768
+        },
+        "mamba.experts.4.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21680128,
+          "size_bytes": 2048
+        },
+        "mamba.experts.4.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21682176,
+          "size_bytes": 131072
+        },
+        "mamba.experts.4.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21813248,
+          "size_bytes": 65536
+        },
+        "mamba.experts.5.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21878784,
+          "size_bytes": 32768
+        },
+        "mamba.experts.5.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21911552,
+          "size_bytes": 32768
+        },
+        "mamba.experts.5.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21944320,
+          "size_bytes": 2048
+        },
+        "mamba.experts.5.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21946368,
+          "size_bytes": 131072
+        },
+        "mamba.experts.5.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22077440,
+          "size_bytes": 65536
+        },
+        "mamba.experts.6.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22142976,
+          "size_bytes": 32768
+        },
+        "mamba.experts.6.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22175744,
+          "size_bytes": 32768
+        },
+        "mamba.experts.6.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22208512,
+          "size_bytes": 2048
+        },
+        "mamba.experts.6.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22210560,
+          "size_bytes": 131072
+        },
+        "mamba.experts.6.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22341632,
+          "size_bytes": 65536
+        },
+        "mamba.experts.7.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22407168,
+          "size_bytes": 32768
+        },
+        "mamba.experts.7.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22439936,
+          "size_bytes": 32768
+        },
+        "mamba.experts.7.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22472704,
+          "size_bytes": 2048
+        },
+        "mamba.experts.7.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22474752,
+          "size_bytes": 131072
+        },
+        "mamba.experts.7.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22605824,
+          "size_bytes": 65536
+        },
+        "mamba.latent_proj": {
+          "shape": [
+            128,
+            64
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22671360,
+          "size_bytes": 32768
+        },
+        "mamba.log_var_head": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22704128,
+          "size_bytes": 32768
+        },
+        "mamba.mu_head": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22736896,
+          "size_bytes": 32768
+        },
+        "mamba.router_linear1": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22769664,
+          "size_bytes": 32768
+        },
+        "mamba.router_linear2": {
+          "shape": [
+            8,
+            64
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22802432,
+          "size_bytes": 2048
+        }
+      }
+    }
+  ],
+  "cumulative_verification": [
+    {
+      "tier_level": 0,
+      "slices_included": [
+        0
+      ],
+      "cumulative_size_bytes": 5701120,
+      "crc32": "65996303",
+      "sha256": "0443cbb892eab7adaf838ab200b105ef3030ce366855672352f4b43f47d0661c"
+    },
+    {
+      "tier_level": 1,
+      "slices_included": [
+        0,
+        1
+      ],
+      "cumulative_size_bytes": 11402240,
+      "crc32": "ba382735",
+      "sha256": "96f578af35226d3472ada1ab35d99cdac731ddcc1bed9cc1418f1669814fa6db"
+    },
+    {
+      "tier_level": 2,
+      "slices_included": [
+        0,
+        1,
+        2
+      ],
+      "cumulative_size_bytes": 17103360,
+      "crc32": "50dfb99b",
+      "sha256": "a8f74a2ac20c1aa75d69531374ad5a8140ecd4e41b90d9b10d8766d24824adaa"
+    },
+    {
+      "tier_level": 3,
+      "slices_included": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "cumulative_size_bytes": 28505600,
+      "crc32": "6c4fa020",
+      "sha256": "41be286abae417b175feeb42221bf3675d42b77ff8f198eb9847056a70ff2e8f"
+    },
+    {
+      "tier_level": 4,
+      "slices_included": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "cumulative_size_bytes": 51310080,
+      "crc32": "26396a83",
+      "sha256": "0d069411f60b120f1291628ba872bb37942bb4a5ffc52da04c60fe5f017a9e4e"
+    }
+  ],
+  "neural_control": {
+    "latent_dim": 64,
+    "latent_rate_hz": 100,
+    "conditioning_dim": 554,
+    "num_moe_experts": 8,
+    "meta_controller": {
+      "active_slice_aware": true,
+      "inputs": [
+        "moe_logits",
+        "telemetry (4d)",
+        "user_weights",
+        "quality_scores",
+        "active_slice_level"
+      ]
+    }
+  }
+}

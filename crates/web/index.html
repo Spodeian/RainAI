@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RainAI · Neural Spatial Soundscape Studio</title>
+
+    <!-- Primary SEO Metadata -->
+    <meta name="title" content="RainAI · Neural Spatial Soundscape Studio">
+    <meta name="description" content="Production-ready Neural Spatial Rain Audio Synthesis in Rust, WebGPU, and WebAssembly.">
+    <meta name="keywords" content="rust, wasm, egui, eframe, spatial audio, ambisonics, hrtf, neural synthesis, webgpu">
+    <meta name="author" content="Liam">
+    <meta name="robots" content="index, follow">
+
+    <!-- Open Graph / Facebook Social Metadata -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="RainAI · Neural Spatial Soundscape Studio">
+    <meta property="og:description" content="Continuous procedural neural rain synthesis conditioned on 554 physical parameters.">
+
+    <!-- Twitter Social Metadata -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:title" content="RainAI · Neural Spatial Soundscape Studio">
+    <meta property="twitter:description" content="Continuous procedural neural rain synthesis conditioned on 554 physical parameters.">
+
+    <!-- Progressive Web App & Offline Capabilities -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#121212">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <!-- Trunk Rust WebAssembly link & Offline assets -->
+    <link
+      data-trunk
+      rel="rust"
+      href="Cargo.toml"
+      data-type="main"
+      data-wasm-opt="z"
+      data-wasm-opt-params="--enable-simd --enable-bulk-memory --enable-mutable-globals --enable-nontrapping-float-to-int --enable-sign-ext --converge --directize --duplicate-function-elimination --coalesce-locals --vacuum --strip-debug --strip-producers"
+      data-integrity="none"
+    >
+    <link data-trunk rel="copy-file" href="_headers">
+    <link data-trunk rel="copy-file" href="_redirects">
+    <link data-trunk rel="copy-file" href="sw.js">
+    <link data-trunk rel="copy-file" href="manifest.json">
+
+    <!-- CSS and JavaScript Assets Managed by Trunk -->
+    <link data-trunk rel="scss" href="index.scss" data-integrity="none">
+    <script data-trunk rel="inline" src="index.js" defer data-integrity="none"></script>
+  </head>
+  <body>
+    <canvas id="egui_canvas"></canvas>
+  </body>
+</html>

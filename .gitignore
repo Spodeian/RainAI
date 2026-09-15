@@ -1,0 +1,82 @@
+# ==============================================================================
+# RainAI Consolidated Root Workspace .gitignore
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Rust Ecosystem & Build Artifacts
+# ------------------------------------------------------------------------------
+/target/
+**/*.rs.bk
+Cargo.lock.log
+*.log
+
+# ------------------------------------------------------------------------------
+# 2. Python Ecosystem, Cache & Testing
+# ------------------------------------------------------------------------------
+.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ------------------------------------------------------------------------------
+# 3. Model Weights & Generated Inference Assets
+# ------------------------------------------------------------------------------
+# Local PyTorch training checkpoints
+ai/checkpoints/
+*.pt
+
+# Unified Crates Inference Data (SafeTensors, ONNX, and WASM binary slices)
+crates/inference/data/candle/*.safetensors
+crates/inference/data/onnx/*.onnx
+crates/inference/data/onnx/*.onnx.data
+crates/inference/data/wasm/*.bin
+
+# ------------------------------------------------------------------------------
+# 4. Audio Datasets & Large Binary Media
+# ------------------------------------------------------------------------------
+ai/Data/rain/
+ai/Data/rain-nc/
+ai/Data/processed/*.flac
+ai/Data/processed/*.wav
+*.flac
+*.wav
+*.ogg
+*.mp3
+
+# ------------------------------------------------------------------------------
+# 5. Frontend UI, Web & Edge Cloud Deployments
+# ------------------------------------------------------------------------------
+/dist/
+/crates/web/dist/
+.stage/
+.wrangler/
+
+# ------------------------------------------------------------------------------
+# 6. Logging, Tracking & Telemetry
+# ------------------------------------------------------------------------------
+logs/*.log
+ai/logs/*.log
+
+# ------------------------------------------------------------------------------
+# 7. Operating System & System Cache
+# ------------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ------------------------------------------------------------------------------
+# 8. Local IDE & Project Editor Configurations
+# ------------------------------------------------------------------------------
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp

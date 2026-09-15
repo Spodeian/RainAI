@@ -1,0 +1,125 @@
+# Simple workflow for deploying compiled Rust/WASM content to GitHub Pages
+name: Deploy static content to Pages
+
+on:
+  # Runs on pushes targeting the default branch
+  push:
+    branches: ["main"]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust Stable Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Cargo Dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Cache Trunk Binary
+        id: cache-trunk
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/trunk
+          key: ${{ runner.os }}-trunk-latest
+
+      - name: Install Trunk Asset Bundler
+        if: steps.cache-trunk.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/.cargo/bin
+          wget -qO- https://github.com/trunk-rs/trunk/releases/latest/download/trunk-x86_64-unknown-linux-gnu.tar.gz | tar -xzf - -C ~/.cargo/bin
+          chmod +x ~/.cargo/bin/trunk
+
+      - name: Cache wasm-opt Binary (Binaryen)
+        id: cache-wasm-opt
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/wasm-opt
+          key: ${{ runner.os }}-wasm-opt-version_132
+
+      - name: Install Binaryen wasm-opt (v132)
+        if: steps.cache-wasm-opt.outputs.cache-hit != 'true'
+        run: |
+          BINARYEN_VERSION="version_132"
+          mkdir -p ~/.cargo/bin
+          wget -qO- "https://github.com/WebAssembly/binaryen/releases/download/${BINARYEN_VERSION}/binaryen-${BINARYEN_VERSION}-x86_64-linux.tar.gz" | tar -xzf -
+          mv "binaryen-${BINARYEN_VERSION}/bin/wasm-opt" ~/.cargo/bin/wasm-opt
+          chmod +x ~/.cargo/bin/wasm-opt
+          rm -rf "binaryen-${BINARYEN_VERSION}"
+
+      - name: Add Cargo Bin to PATH
+        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Build Web Application
+        env:
+          RUSTFLAGS: "-C target-feature=+simd128"
+        run: |
+          echo "Active wasm-opt version: $(wasm-opt --version)"
+          trunk build --release --public-url "/"
+          for wasm_file in crates/web/dist/*.wasm; do
+            if [ -f "$wasm_file" ]; then
+              echo "Optimizing $wasm_file with wasm-opt (SIMD enabled)"
+              wasm-opt -Oz --enable-simd "$wasm_file" -o "$wasm_file" || true
+            fi
+          done
+
+      - name: Setup Node.js 24 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.node-version'
+
+      - name: Minify Production Assets (HTML, CSS, JS)
+        run: |
+          echo "=== Minifying Production Distribution Assets in crates/web/dist ==="
+          if [ -d "crates/web/dist" ]; then
+            for js_file in crates/web/dist/*.js; do
+              if [ -f "$js_file" ]; then
+                echo "Minifying JS: $js_file"
+                npx --yes esbuild "$js_file" --minify --allow-overwrite --outfile="$js_file"
+              fi
+            done
+            for css_file in crates/web/dist/*.css; do
+              if [ -f "$css_file" ]; then
+                echo "Minifying CSS: $css_file"
+                npx --yes esbuild "$css_file" --minify --allow-overwrite --outfile="$css_file"
+              fi
+            done
+            if [ -f "crates/web/dist/index.html" ]; then
+              echo "Minifying HTML: crates/web/dist/index.html"
+              npx --yes html-minifier-terser --collapse-whitespace --remove-comments --remove-redundant-attributes --remove-script-type-attributes --remove-style-link-type-attributes --use-short-doctype --minify-css true --minify-js true -o crates/web/dist/index.html crates/web/dist/index.html
+            fi
+          fi
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload compiled assets artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'crates/web/dist'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

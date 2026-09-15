@@ -1,0 +1,19 @@
+{
+  "name": "Serverless & Desktop Template",
+  "short_name": "AppTemplate",
+  "description": "Production-ready Serverless (WASM / Cloudflare Pages / PWA) & Native Desktop template in Rust with egui.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#121212",
+  "theme_color": "#121212",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "https://spodeian.trade/og-image.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

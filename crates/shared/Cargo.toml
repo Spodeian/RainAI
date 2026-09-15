@@ -1,0 +1,23 @@
+[package]
+name = "shared"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Core business models, serialization, state management, and export logic"
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+bson = { workspace = true }
+miniz_oxide = { workspace = true }
+base64 = { workspace = true }
+thiserror = { workspace = true }
+
+[features]
+default = ["std"]
+std = ["serde/std", "serde_json/std", "thiserror/std"]

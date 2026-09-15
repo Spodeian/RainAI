@@ -1,0 +1,27 @@
+[package]
+name = "audio"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Real-time audio engine, procedural DDSP synthesis, Ambisonic FOA decoders, and export"
+
+[lints]
+workspace = true
+
+[dependencies]
+shared = { workspace = true }
+inference = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+cpal = "0.15"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = { workspace = true }
+web-sys = { workspace = true }
+js-sys = { workspace = true }

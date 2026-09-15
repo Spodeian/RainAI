@@ -1,0 +1,84 @@
+@import url('https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+
+@font-face {
+  font-family: 'Symbols Nerd Font';
+  src: url('https://cdn.jsdelivr.net/npm/@nerdfonts/font-webfont@v3.2.1/SymbolsNerdFont-Regular.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Symbols Nerd Font Mono';
+  src: url('https://cdn.jsdelivr.net/npm/@nerdfonts/font-webfont@v3.2.1/SymbolsNerdFontMono-Regular.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Serverless & Desktop Template - Web Client Stylesheet */
+
+:root {
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --font-dyslexia: 'Atkinson Hyperlegible', 'OpenDyslexic', system-ui, -apple-system, sans-serif;
+  --font-nerd: 'Symbols Nerd Font Mono', 'Symbols Nerd Font', 'JetBrainsMono Nerd Font', 'FiraCode Nerd Font', 'CaskaydiaCove Nerd Font', 'Hack Nerd Font', 'MesloLGS Nerd Font', var(--font-mono);
+}
+
+[data-dyslexia="true"] {
+  --font-sans: var(--font-dyslexia);
+  --font-mono: 'Atkinson Hyperlegible', monospace;
+  letter-spacing: 0.04em;
+  word-spacing: 0.08em;
+  line-height: 1.75;
+}
+
+.font-nerd {
+  font-family: var(--font-nerd) !important;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: #121212;
+  font-family: var(--font-sans);
+}
+
+canvas {
+  width: 100vw;
+  height: 100vh;
+  display: block;
+  touch-action: none;
+
+  &:focus-visible {
+    outline: 2px solid #58a6ff;
+    outline-offset: -2px;
+  }
+}
+
+// Global Reduced Motion Compliance
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (max-width: 480px) {
+  canvas {
+    touch-action: pan-y;
+  }
+}
+
+@media print {
+  body {
+    overflow: auto;
+    background: #fff;
+  }
+}
+

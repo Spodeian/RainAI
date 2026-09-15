@@ -1,0 +1,10 @@
+[build]
+target = "crates/web/index.html"
+dist = "crates/web/dist"
+wasm_opt = "0"
+
+[serve]
+port = 8080
+
+[clean]
+value = true

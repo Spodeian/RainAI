@@ -1,0 +1,8 @@
+name = "rainai"
+pages_build_output_dir = "crates/web/dist"
+compatibility_date = "2026-08-18"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+ENVIRONMENT = "production"
+NODE_VERSION = "24"

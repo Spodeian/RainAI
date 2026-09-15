@@ -1,0 +1,239 @@
+{
+  "tier": "high_int16",
+  "description": "High fidelity audio with 16-bit minimum activation resolution and static INT16 weights",
+  "activation_qat": {
+    "per_channel_bit_widths": [
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0
+    ],
+    "pruned_channels": [],
+    "int4_channels": [],
+    "int8_channels": [],
+    "int16_channels": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51,
+      52,
+      53,
+      54,
+      55,
+      56,
+      57,
+      58,
+      59,
+      60,
+      61,
+      62,
+      63
+    ],
+    "affine_alignment_applied": true
+  },
+  "weights": {
+    "encoder.cond_proj.weight": {
+      "shape": [
+        512,
+        554
+      ],
+      "scale": 1.4507785408568452e-06,
+      "dtype": "int16"
+    },
+    "encoder.conv1.weight": {
+      "shape": [
+        64,
+        4,
+        15
+      ],
+      "scale": 4.012587396573508e-06,
+      "dtype": "int16"
+    },
+    "encoder.conv2.weight": {
+      "shape": [
+        128,
+        64,
+        15
+      ],
+      "scale": 1.0304996749255224e-06,
+      "dtype": "int16"
+    },
+    "encoder.conv3.weight": {
+      "shape": [
+        256,
+        128,
+        15
+      ],
+      "scale": 7.941373496578308e-07,
+      "dtype": "int16"
+    },
+    "encoder.conv4.weight": {
+      "shape": [
+        512,
+        256,
+        15
+      ],
+      "scale": 6.139192123555404e-07,
+      "dtype": "int16"
+    },
+    "encoder.res_blocks.0.weight": {
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "scale": 8.992711286737176e-07,
+      "dtype": "int16"
+    },
+    "encoder.res_blocks.2.weight": {
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "scale": 8.982935923995683e-07,
+      "dtype": "int16"
+    },
+    "encoder.out_proj.weight": {
+      "shape": [
+        64,
+        512,
+        3
+      ],
+      "scale": 8.944109595176997e-07,
+      "dtype": "int16"
+    },
+    "encoder.affine_align.weight": {
+      "shape": [
+        64,
+        64
+      ],
+      "scale": 3.0634670110885054e-05,
+      "dtype": "int16"
+    },
+    "encoder.quality_head.2.weight": {
+      "shape": [
+        64,
+        512
+      ],
+      "scale": 1.348734713246813e-06,
+      "dtype": "int16"
+    },
+    "encoder.quality_head.4.weight": {
+      "shape": [
+        1,
+        64
+      ],
+      "scale": 3.7641191283910302e-06,
+      "dtype": "int16"
+    }
+  }
+}

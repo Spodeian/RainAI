@@ -1,0 +1,25 @@
+[package]
+name = "desktop"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Native desktop runner for the Serverless & Desktop Template"
+
+[lints]
+workspace = true
+
+[dependencies]
+eframe = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+app = { workspace = true }
+mimalloc = "0.1"
+
+[features]
+default = ["accesskit", "persistence", "wgpu"]
+accesskit = ["app/accesskit", "eframe/accesskit"]
+persistence = ["app/persistence", "eframe/persistence"]
+wgpu = ["app/wgpu", "eframe/wgpu"]
+glow = ["app/glow", "eframe/glow"]
