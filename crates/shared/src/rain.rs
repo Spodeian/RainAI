@@ -559,9 +559,7 @@ impl RainState {
 
         // 3. Normalized Surfaces (9-dim: 522..531)
         let surf = self.surfaces.normalized();
-        for i in 0..9 {
-            u[522 + i] = surf[i];
-        }
+        u[522..531].copy_from_slice(&surf);
 
         // 4. Wind Dynamics (4-dim: 531..535)
         u[531] = self.wind.speed;

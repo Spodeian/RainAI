@@ -1,6 +1,6 @@
 // Service Worker for Serverless & Desktop Template
 // Strategy: Cache-First with Background Network Revalidation (Stale-While-Revalidate)
-const CACHE_NAME = 'serverless-desktop-template-cache-v20260912';
+const CACHE_NAME = 'serverless-desktop-template-cache-v20260916';
 
 // Static assets to pre-cache on install
 const PRECACHE_ASSETS = [
@@ -8,7 +8,10 @@ const PRECACHE_ASSETS = [
   '/index.html',
   '/manifest.json',
   '/favicon.svg',
-  '/favicon.ico'
+  '/favicon.ico',
+  '/inference_worklet.js',
+  '/pkg/web.js',
+  '/pkg/web_bg.wasm'
 ];
 
 // 1. Pre-cache on install with error resilience and activate immediately

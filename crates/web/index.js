@@ -1,10 +1,54 @@
 // ============================================================================
-// WebAudio Autoplay Policy Unlocking (Safari / iOS & Mobile Chrome)
+// RainAI Neural Audio Engine Initialization & Autoplay Unlocking
 // ============================================================================
+window.__rainAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+window.__rainEngine = null;
+
+async function initializeAudioEngine() {
+  if (window.__rainEngine) return window.__rainEngine;
+
+  const audioCtx = window.__rainAudioContext;
+  
+  // 1. Load the AudioWorklet module
+  await audioCtx.audioWorklet.addModule('inference_worklet.js');
+  
+  // 2. Fetch and compile the WebAssembly binary dynamically
+  const response = await fetch('./pkg/web_bg.wasm');
+  const wasmBytes = await response.arrayBuffer();
+  const wasmModule = await WebAssembly.compile(wasmBytes);
+  
+  // 3. Create the Inference Node (0 inputs, 1 output with 4 channels)
+  const inferenceNode = new AudioWorkletNode(audioCtx, 'rain-inference-processor', {
+      numberOfInputs: 0,
+      numberOfOutputs: 1,
+      outputChannelCount: [4]
+  });
+  
+  // 4. Initialize lock-free memory mapping (554 f32s = 2216 bytes)
+  const sharedBuffer = new SharedArrayBuffer(554 * 4);
+  const telemetryArray = new Float32Array(sharedBuffer);
+  
+  // 5. Send initialization payloads to the Worklet
+  inferenceNode.port.postMessage({ type: 'INIT_WASM', payload: { wasmModule } });
+  inferenceNode.port.postMessage({ type: 'SET_SHARED_BUFFER', payload: { sharedBuffer } });
+  
+  // 6. Connect the 4-channel FOA output to the destination (or a Binaural downmixer)
+  inferenceNode.connect(audioCtx.destination);
+  
+  window.__rainEngine = { audioCtx, inferenceNode, telemetryArray };
+  console.log("RainAI Audio Engine Initialized");
+  
+  return window.__rainEngine;
+}
+
 (function () {
-  const unlockAudio = () => {
+  const unlockAudio = async () => {
     if (window.__rainAudioContext && window.__rainAudioContext.state === 'suspended') {
       window.__rainAudioContext.resume().catch(() => {});
+    }
+    // Initialize the WASM engine on the first user interaction
+    if (!window.__rainEngine) {
+      await initializeAudioEngine().catch(e => console.error("Audio Engine Init Failed:", e));
     }
   };
   ['click', 'touchstart', 'pointerdown', 'keydown'].forEach((evt) => {

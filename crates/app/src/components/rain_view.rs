@@ -161,6 +161,69 @@ impl RainView {
                 RainTab::Telemetry => self.render_telemetry_tab(ui, rain),
             }
         });
+
+        // Synchronize real-time UI parameters to the WASM AudioWorklet
+        self.sync_wasm_telemetry(rain);
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn sync_wasm_telemetry(&self, rain: &RainState) {
+        use wasm_bindgen::JsCast;
+        if let Some(window) = web_sys::window() {
+            // Grab the global audio engine instance
+            if let Ok(engine) = js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("__rainEngine")) {
+                if !engine.is_undefined() && !engine.is_null() {
+                    // Extract the SharedArrayBuffer Float32Array projection
+                    if let Ok(telemetry_val) = js_sys::Reflect::get(&engine, &wasm_bindgen::JsValue::from_str("telemetryArray")) {
+                        if let Ok(telemetry_array) = telemetry_val.dyn_into::<js_sys::Float32Array>() {
+                            
+                            // Condition Vector Structure (554 elements)
+                            let mut cond = [0.0f32; 554];
+                            
+                            // Map Weather Dynamics
+                            cond[0] = rain.weather.intensity;
+                            cond[1] = rain.weather.runoff;
+                            cond[2] = rain.weather.distance;
+                            cond[3] = rain.weather.enclosure;
+                            cond[4] = rain.weather.pitch_angle;
+                            
+                            // Map Wind Physics
+                            cond[5] = rain.wind.speed;
+                            cond[6] = rain.wind.gustiness;
+                            cond[7] = rain.wind.turbulence;
+                            cond[8] = rain.wind.howl;
+                            
+                            // Map Material Surface Blend
+                            let surf = rain.surfaces.normalized();
+                            cond[9..18].copy_from_slice(&surf);
+                            
+                            // Map Side Sounds & Spatial Radar
+                            cond[18] = rain.side_sounds.fireplace_intensity;
+                            cond[19] = rain.side_sounds.fireplace_azimuth;
+                            cond[20] = rain.side_sounds.thunder_proximity;
+                            cond[21] = rain.side_sounds.thunder_azimuth;
+                            cond[22] = rain.side_sounds.insect_density;
+                            cond[23] = rain.side_sounds.insect_azimuth;
+                            cond[24] = rain.side_sounds.bird_activity;
+                            cond[25] = rain.side_sounds.traffic_distance;
+                            cond[26] = self.listener_yaw;
+                            
+                            // Playback State
+                            cond[27] = if rain.is_playing { 1.0 } else { 0.0 };
+                            cond[28] = rain.master_volume;
+                            
+                            // Bulk copy into the SharedArrayBuffer memory (Zero-lock transfer to AudioWorklet)
+                            telemetry_array.copy_from(&cond);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn sync_wasm_telemetry(&self, _rain: &RainState) {
+        // No-op for Desktop/Native. Telemetry is routed directly through native audio queues.
     }
 
     fn render_header(&mut self, ui: &mut egui::Ui, rain: &mut RainState) {

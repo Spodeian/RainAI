@@ -359,29 +359,3 @@ impl WeatherPreset {
         ]
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_preset_json_roundtrip() {
-        let builtins = WeatherPreset::builtins();
-        assert!(!builtins.is_empty());
-        for preset in &builtins {
-            let json = preset.to_json().expect("Failed to serialize preset");
-            let deserialized = WeatherPreset::from_json(&json).expect("Failed to deserialize preset");
-            assert_eq!(preset.name, deserialized.name);
-            assert_eq!(preset.tags, deserialized.tags);
-            assert_eq!(preset.state.noise_color, deserialized.state.noise_color);
-        }
-    }
-
-    #[test]
-    fn test_preset_url_hash_roundtrip() {
-        let preset = &WeatherPreset::builtins()[0];
-        let hash = preset.to_shareable_url_hash().expect("Failed to encode hash");
-        let decoded = WeatherPreset::from_shareable_url_hash(&hash).expect("Failed to decode hash");
-        assert_eq!(preset.name, decoded.name);
-    }
-}

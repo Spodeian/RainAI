@@ -20,6 +20,13 @@ description = "RainAI · Real-time neural spatial soundscape synthesis studio in
 repository = "https://github.com/Spodeian/RainAI"
 
 [workspace.dependencies]
+shared = { path = "crates/shared" }
+audio = { path = "crates/audio" }
+inference = { path = "crates/inference" }
+app = { path = "crates/app" }
+criterion = "0.5"
+bytemuck = { version = "1.15", features = ["derive"] }
+wgpu = "0.19"
 eframe = { version = "0.36", default-features = false, features = ["default_fonts"] }
 egui = { version = "0.36", default-features = false, features = ["default_fonts"] }
 serde = { version = "1", features = ["derive"] }
@@ -27,11 +34,6 @@ serde_json = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "ansi", "tracing-log"] }
 tracing-web = "0.1"
-
-shared = { path = "crates/shared" }
-audio = { path = "crates/audio" }
-inference = { path = "crates/inference" }
-app = { path = "crates/app" }
 thiserror = "2.0"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
@@ -42,6 +44,7 @@ bson = "2"
 miniz_oxide = "0.8"
 base64 = "0.22"
 ron = "0.12"
+ringbuf = "0.3"
 
 [workspace.lints.rust]
 unsafe_code = "deny"
@@ -67,17 +70,14 @@ overflow-checks = false
 incremental = false
 rpath = false
 
-[profile.release-small]
+[profile.release-wasm]
 inherits = "release"
 opt-level = "z"
-lto = "fat"
-codegen-units = 1
-panic = "abort"
-strip = true
 
 [profile.release.build-override]
 opt-level = 2
 codegen-units = 256
+overflow-checks = false
 
 [profile.bench]
 opt-level = 3
@@ -95,10 +95,3 @@ debug = true
 [profile.dev.build-override]
 opt-level = 2
 overflow-checks = false
-
-# Fast test execution: line-level debuginfo for quick linking, optimized dependencies for faster test runs
-[profile.test]
-debug = 1
-
-[profile.test.package."*"]
-opt-level = 2

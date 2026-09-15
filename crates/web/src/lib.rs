@@ -6,6 +6,11 @@ use app::TemplateApp;
 use wasm_bindgen::{JsCast, prelude::*};
 
 #[cfg(target_arch = "wasm32")]
+use inference::{runner::InferenceRunner, weight_loader::WeightLoader};
+#[cfg(target_arch = "wasm32")]
+use shared::rain::{QualityTier, CONDITION_DIM};
+
+#[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(start)]
 pub fn main() {
     // Redirect panic logs to browser developer console
@@ -37,4 +42,48 @@ pub fn main() {
             )
             .await;
     });
+}
+
+/// WASM binding for the AudioWorklet to stream conditioning vectors into the SIMD pipeline.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub struct WasmInferenceNode {
+    runner: InferenceRunner,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+impl WasmInferenceNode {
+    /// Initializes the inference engine and loads the embedded ternary weights.
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Result<WasmInferenceNode, JsValue> {
+        let cache = WeightLoader::load_embedded_ternary()
+            .map_err(|e| JsValue::from_str(&format!("Failed to load embedded weights: {}", e)))?;
+            
+        let runner = InferenceRunner::new(QualityTier::Ternary158, cache);
+        Ok(Self { runner })
+    }
+
+    /// Processes a single frame of conditioning data and returns 4-channel FOA (W, X, Y, Z).
+    pub fn step_frame(&mut self, conditioning: &[f32]) -> Result<Vec<f32>, JsValue> {
+        if conditioning.len() != CONDITION_DIM {
+            return Err(JsValue::from_str(&format!(
+                "Conditioning vector must be exactly {} elements",
+                CONDITION_DIM
+            )));
+        }
+        
+        let mut cond_array = [0.0f32; CONDITION_DIM];
+        cond_array.copy_from_slice(conditioning);
+        
+        let (w, x, y, z) = self.runner.step(&cond_array);
+        
+        // Return as a Vec<f32>, which wasm_bindgen translates to a Float32Array
+        Ok(vec![w, x, y, z])
+    }
+    
+    /// Dynamically adjust the active MoE experts to throttle CPU usage.
+    pub fn set_active_experts(&mut self, experts: usize) {
+        self.runner.set_active_experts(experts);
+    }
 }

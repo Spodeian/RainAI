@@ -7,6 +7,7 @@ pub mod storage_manager;
 pub use components::*;
 pub use storage_manager::*;
 
+use components::spectrogram::{SpectrogramHistory, render_spectrogram_panel};
 use audio::SharedAudioState;
 #[cfg(not(target_arch = "wasm32"))]
 use audio::DesktopAudioEngine;
@@ -14,7 +15,7 @@ use audio::DesktopAudioEngine;
 use audio::WebAudioEngine;
 use eframe::egui;
 use shared::{
-    AppState, Priority, ThemeMode, export_to_compressed_bson, export_to_csv, export_to_json,
+    AppState, ThemeMode, export_to_compressed_bson, export_to_csv, export_to_json,
 };
 #[allow(unused_imports)]
 use tracing::{error, info, warn};
@@ -66,6 +67,7 @@ pub struct TemplateApp {
     #[cfg(target_arch = "wasm32")]
     pub web_audio: Option<WebAudioEngine>,
     pub audio_state: Option<SharedAudioState>,
+    pub spectrogram_history: SpectrogramHistory,
     pub current_theme: Option<ThemeMode>,
     pub show_reset_dialog: bool,
     pub show_help_dialog: bool,
@@ -76,11 +78,6 @@ pub struct TemplateApp {
     pub export_text_buffer: String,
     pub export_copied_notification: Option<f64>,
     pub selected_export_format: ExportFormat,
-    pub new_item_title: String,
-    pub new_item_description: String,
-    pub new_item_priority: Priority,
-    pub filter_priority: Option<Priority>,
-    pub search_query: String,
     pub storage_diag: StorageDiagnostics,
     pub show_storage_modal: bool,
     pub dismissed_ephemeral_warning: bool,
@@ -99,6 +96,7 @@ impl Default for TemplateApp {
             #[cfg(target_arch = "wasm32")]
             web_audio: None,
             audio_state: None,
+            spectrogram_history: SpectrogramHistory::default(),
             current_theme: None,
             show_reset_dialog: false,
             show_help_dialog: false,
@@ -109,11 +107,6 @@ impl Default for TemplateApp {
             export_text_buffer: String::new(),
             export_copied_notification: None,
             selected_export_format: ExportFormat::default(),
-            new_item_title: String::new(),
-            new_item_description: String::new(),
-            new_item_priority: Priority::Medium,
-            filter_priority: None,
-            search_query: String::new(),
             storage_diag: query_storage_diagnostics(),
             show_storage_modal: false,
             dismissed_ephemeral_warning: false,
@@ -126,7 +119,7 @@ impl Default for TemplateApp {
 
 impl TemplateApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        info!("Initializing Serverless & Desktop Template App...");
+        info!("Initializing RainAI Studio...");
 
         #[allow(unused_mut)]
         let mut state = load_state_multi_tier(cc.storage).unwrap_or_else(|| {
@@ -209,28 +202,18 @@ impl TemplateApp {
         let visuals = match self.state.config.theme {
             ThemeMode::Light => {
                 let mut light = egui::Visuals::light();
-
-                // Soothing neutral/warm light backgrounds
                 light.panel_fill = egui::Color32::from_rgb(245, 244, 241);
                 light.window_fill = egui::Color32::from_rgb(252, 250, 246);
                 light.extreme_bg_color = egui::Color32::from_rgb(238, 236, 231);
-
-                // Soft charcoal for high-contrast, comfortable reading
                 light.widgets.noninteractive.fg_stroke.color = egui::Color32::from_rgb(45, 44, 42);
                 light.widgets.inactive.fg_stroke.color = egui::Color32::from_rgb(55, 54, 52);
                 light.widgets.hovered.fg_stroke.color = egui::Color32::from_rgb(20, 20, 18);
                 light.widgets.active.fg_stroke.color = egui::Color32::from_rgb(0, 0, 0);
-
-                // Muted border strokes
-                light.widgets.noninteractive.bg_stroke.color =
-                    egui::Color32::from_rgb(222, 220, 215);
+                light.widgets.noninteractive.bg_stroke.color = egui::Color32::from_rgb(222, 220, 215);
                 light.widgets.inactive.bg_stroke.color = egui::Color32::from_rgb(212, 210, 205);
-
-                // Buttons background
                 light.widgets.inactive.bg_fill = egui::Color32::from_rgb(252, 251, 248);
                 light.widgets.hovered.bg_fill = egui::Color32::from_rgb(236, 234, 229);
                 light.widgets.active.bg_fill = egui::Color32::from_rgb(220, 218, 212);
-
                 light
             }
             ThemeMode::Dark => egui::Visuals::dark(),
@@ -241,16 +224,12 @@ impl TemplateApp {
                 hc.extreme_bg_color = egui::Color32::from_rgb(10, 10, 10);
                 hc.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.5, egui::Color32::WHITE);
                 hc.widgets.inactive.fg_stroke = egui::Stroke::new(1.5, egui::Color32::WHITE);
-                hc.widgets.hovered.fg_stroke =
-                    egui::Stroke::new(2.0, egui::Color32::from_rgb(255, 255, 0));
-                hc.widgets.active.fg_stroke =
-                    egui::Stroke::new(2.0, egui::Color32::from_rgb(255, 255, 0));
+                hc.widgets.hovered.fg_stroke = egui::Stroke::new(2.0, egui::Color32::from_rgb(255, 255, 0));
+                hc.widgets.active.fg_stroke = egui::Stroke::new(2.0, egui::Color32::from_rgb(255, 255, 0));
                 hc.widgets.noninteractive.bg_stroke = egui::Stroke::new(2.0, egui::Color32::WHITE);
                 hc.widgets.inactive.bg_stroke = egui::Stroke::new(2.0, egui::Color32::WHITE);
-                hc.widgets.hovered.bg_stroke =
-                    egui::Stroke::new(2.5, egui::Color32::from_rgb(255, 255, 0));
-                hc.widgets.active.bg_stroke =
-                    egui::Stroke::new(2.5, egui::Color32::from_rgb(255, 255, 0));
+                hc.widgets.hovered.bg_stroke = egui::Stroke::new(2.5, egui::Color32::from_rgb(255, 255, 0));
+                hc.widgets.active.bg_stroke = egui::Stroke::new(2.5, egui::Color32::from_rgb(255, 255, 0));
                 hc.widgets.inactive.bg_fill = egui::Color32::BLACK;
                 hc.widgets.hovered.bg_fill = egui::Color32::from_rgb(30, 30, 0);
                 hc.widgets.active.bg_fill = egui::Color32::from_rgb(50, 50, 0);
@@ -263,16 +242,12 @@ impl TemplateApp {
                 hc.extreme_bg_color = egui::Color32::WHITE;
                 hc.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.5, egui::Color32::BLACK);
                 hc.widgets.inactive.fg_stroke = egui::Stroke::new(1.5, egui::Color32::BLACK);
-                hc.widgets.hovered.fg_stroke =
-                    egui::Stroke::new(2.0, egui::Color32::from_rgb(0, 0, 180));
-                hc.widgets.active.fg_stroke =
-                    egui::Stroke::new(2.0, egui::Color32::from_rgb(0, 0, 220));
+                hc.widgets.hovered.fg_stroke = egui::Stroke::new(2.0, egui::Color32::from_rgb(0, 0, 180));
+                hc.widgets.active.fg_stroke = egui::Stroke::new(2.0, egui::Color32::from_rgb(0, 0, 220));
                 hc.widgets.noninteractive.bg_stroke = egui::Stroke::new(2.0, egui::Color32::BLACK);
                 hc.widgets.inactive.bg_stroke = egui::Stroke::new(2.0, egui::Color32::BLACK);
-                hc.widgets.hovered.bg_stroke =
-                    egui::Stroke::new(2.5, egui::Color32::from_rgb(0, 0, 180));
-                hc.widgets.active.bg_stroke =
-                    egui::Stroke::new(2.5, egui::Color32::from_rgb(0, 0, 220));
+                hc.widgets.hovered.bg_stroke = egui::Stroke::new(2.5, egui::Color32::from_rgb(0, 0, 180));
+                hc.widgets.active.bg_stroke = egui::Stroke::new(2.5, egui::Color32::from_rgb(0, 0, 220));
                 hc.widgets.inactive.bg_fill = egui::Color32::WHITE;
                 hc.widgets.hovered.bg_fill = egui::Color32::from_rgb(230, 235, 255);
                 hc.widgets.active.bg_fill = egui::Color32::from_rgb(210, 220, 255);
@@ -338,12 +313,23 @@ impl TemplateApp {
         // Primes pre-buffering immediately on startup across desktop and web
         self.ensure_audio_engine();
 
-        // 3. Keep audio engine parameters and telemetry updated continuously
+        // Keep audio engine parameters and telemetry updated continuously
         if let Some(ref audio_state) = self.audio_state {
             audio_state.update_rain(&self.state.rain);
             audio_state.set_decode_mode(self.rain_view.decode_mode);
             audio_state.set_orientation(self.rain_view.listener_yaw, 0.0, 0.0);
             self.state.rain.telemetry = audio_state.get_telemetry();
+
+            // Feed spectral energy bins into spectrogram history
+            let mut current_bins = [0.0f32; 32];
+            let time_sec = ui_time_approx(); // helper or context time
+            for (i, bin) in current_bins.iter_mut().enumerate() {
+                let intensity = (self.state.rain.intensity * 0.7 
+                    + (i as f32 * 0.25).sin().abs() * 0.3)
+                    .clamp(0.0, 1.0);
+                *bin = intensity;
+            }
+            self.spectrogram_history.push_frame(current_bins);
 
             #[cfg(target_arch = "wasm32")]
             if self.state.rain.is_playing {
@@ -355,18 +341,19 @@ impl TemplateApp {
     }
 }
 
+fn ui_time_approx() -> f64 {
+    // lightweight fallback or passed time if needed
+    0.0
+}
+
 impl eframe::App for TemplateApp {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        // 1. Write standard RON state to eframe::APP_KEY
         eframe::set_value(storage, eframe::APP_KEY, &self.state);
 
-        // 2. Write JSON to dedicated key in storage
         if let Ok(json_str) = serde_json::to_string(&self.state) {
             storage.set_string(DEDICATED_STORAGE_KEY, json_str);
         }
         storage.flush();
-
-        // 3. Persist to multi-tier engine
         self.persist_state();
     }
 
@@ -395,6 +382,9 @@ impl eframe::App for TemplateApp {
         let constraints = ScreenConstraints::compute(ui);
         components::navbar::render_navbar(self, ui, &constraints);
 
+        // Render the bottom spectrogram waterfall panel
+        render_spectrogram_panel(ui, &self.spectrogram_history);
+
         egui::CentralPanel::default().show(ui, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 // RainAI Soundscape Studio
@@ -403,17 +393,6 @@ impl eframe::App for TemplateApp {
                     ui.label("Continuous, non-repetitive procedural rain synthesis conditioned on 554 physical parameters.");
                     ui.add_space(8.0);
                     self.rain_view.render(ui, &mut self.state.rain);
-                });
-
-                ui.add_space(14.0);
-
-                // Task & Workspace Management
-                ui.collapsing("📋 Workspace Tasks & Notes", |ui| {
-                    components::item_list::render_summary_cards(self, ui, &constraints);
-                    ui.add_space(10.0);
-                    components::item_list::render_new_item_form(self, ui, &constraints);
-                    ui.add_space(10.0);
-                    components::item_list::render_item_list(self, ui, &constraints);
                 });
             });
         });

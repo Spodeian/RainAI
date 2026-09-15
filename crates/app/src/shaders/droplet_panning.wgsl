@@ -9,6 +9,7 @@ struct DropletInstance {
     wind_speed_ms: f32,    // Local wind speed in m/s
     wind_azimuth: f32,     // Wind azimuth in radians [-pi, pi]
     amplitude: f32,        // Base acoustic amplitude
+    padding: vec2<f32>,    // 8-byte padding for strict 32-byte VRAM alignment
 };
 
 struct AmbisonicFrame {

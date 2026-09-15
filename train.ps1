@@ -7,7 +7,7 @@
     .\train.ps1 -Profile smoke-test
     .\train.ps1 -Profile balanced
     .\train.ps1 -Profile production
-    .\train.ps1 -Phases vae export
+    .\train.ps1 -Phases vae export -SliceLevel 2
 #>
 param(
     [ValidateSet("smoke-test", "balanced", "production", "export-only", "custom")]
@@ -20,6 +20,8 @@ param(
     [int]$MaxBatches,
     [int]$AccumulationSteps,
     [string]$Device,
+    [int]$SliceLevel,
+    [int]$NumSlices,
     [switch]$NoAmp,
     [switch]$UseDisc,
     [switch]$ChunkCurriculum,
@@ -55,7 +57,10 @@ if ($PSBoundParameters.ContainsKey('EpochsVae')) { $ArgsList += @("--epochs-vae"
 if ($PSBoundParameters.ContainsKey('EpochsMamba')) { $ArgsList += @("--epochs-mamba", $EpochsMamba) }
 if ($PSBoundParameters.ContainsKey('BatchSize')) { $ArgsList += @("--batch-size", $BatchSize) }
 if ($PSBoundParameters.ContainsKey('MaxBatches')) { $ArgsList += @("--max-batches", $MaxBatches) }
-if ($PSBoundParameters.ContainsKey('AccumulationSteps')) { $ArgsList += @("--accumulation-steps", $AccumulationSteps) }if ($Device) { $ArgsList += @("--device", $Device) }
+if ($PSBoundParameters.ContainsKey('AccumulationSteps')) { $ArgsList += @("--accumulation-steps", $AccumulationSteps) }
+if ($Device) { $ArgsList += @("--device", $Device) }
+if ($PSBoundParameters.ContainsKey('SliceLevel')) { $ArgsList += @("--slice-level", $SliceLevel) }
+if ($PSBoundParameters.ContainsKey('NumSlices')) { $ArgsList += @("--num-slices", $NumSlices) }
 if ($NoAmp) { $ArgsList += "--no-amp" }
 if ($UseDisc) { $ArgsList += "--use-disc" }
 if ($ChunkCurriculum) { $ArgsList += "--chunk-curriculum" }

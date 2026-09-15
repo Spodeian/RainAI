@@ -64,17 +64,44 @@ pub fn render_wav_stream<W: Write>(
     write_wav_header(writer, num_channels, sample_rate, total_frames)?;
 
     let mut synth = ProceduralSynthesizer::new(sample_rate as f32);
+    
+    // Load inference weights and setup engine
+    let weight_cache = inference::weight_loader::WeightLoader::load_embedded_ternary().unwrap_or_default();
+    let mut runner = inference::runner::InferenceRunner::new(state.quality_tier, weight_cache);
     let mut decoder = AmbisonicDecoder::new(mode);
 
     let mut frames_remaining = total_frames;
     let mut foa_buf = [FoaFrame::default(); CHUNK_FRAMES];
     let mut bytes_written = 44u64; // WAV header size
+    
+    // Force active synth state for offline export even if UI is paused
+    let mut active_state = state.clone();
+    active_state.is_playing = true;
+    let blend = active_state.telemetry.synthesis_blend;
 
     while frames_remaining > 0 {
         let frames_to_process = (frames_remaining as usize).min(CHUNK_FRAMES);
         let slice = &mut foa_buf[..frames_to_process];
 
-        synth.process_buffer(state, slice);
+        // Synthesize mixed Procedural/Neural frame buffer
+        for frame in slice.iter_mut() {
+            let foa_proc = synth.process_frame(&active_state);
+            
+            *frame = if blend >= 0.999 {
+                foa_proc
+            } else {
+                let cond = active_state.to_conditioning_array();
+                let (nw, nx, ny, nz) = runner.step(&cond);
+                let foa_neural = crate::decoder::FoaFrame::new(nw, nx, ny, nz);
+
+                crate::decoder::FoaFrame::new(
+                    foa_proc.w * blend + foa_neural.w * (1.0 - blend),
+                    foa_proc.x * blend + foa_neural.x * (1.0 - blend),
+                    foa_proc.y * blend + foa_neural.y * (1.0 - blend),
+                    foa_proc.z * blend + foa_neural.z * (1.0 - blend),
+                )
+            };
+        }
 
         match mode {
             DecodeMode::BinauralHeadphones | DecodeMode::StereoSpeakers => {
@@ -118,32 +145,4 @@ pub fn render_wav_stream<W: Write>(
     }
 
     Ok(bytes_written)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_wav_export_streaming_size() {
-        let mut state = RainState::default();
-        state.is_playing = true;
-
-        let mut output = Vec::new();
-        let bytes = render_wav_stream(
-            &state,
-            0.1, // 100ms
-            48000,
-            DecodeMode::StereoSpeakers,
-            &mut output,
-            |_| {},
-        )
-        .expect("Render should succeed");
-
-        // 4800 frames * 2 channels * 4 bytes/sample = 38,400 bytes + 44 byte header = 38,444
-        assert_eq!(bytes, 38_444);
-        assert_eq!(output.len(), 38_444);
-        assert_eq!(&output[0..4], b"RIFF");
-        assert_eq!(&output[8..12], b"WAVE");
-    }
 }

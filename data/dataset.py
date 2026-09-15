@@ -42,12 +42,12 @@ def generate_pink_noise(samples: int) -> torch.Tensor:
 def select_active_crop(
     audio: np.ndarray,
     chunk_samples: int,
-    min_active_ratio: float = 0.3,
+    min_active_ratio: float = 0.25,
     max_attempts: int = 5
 ) -> np.ndarray:
     """
     Selects a temporal window containing active acoustic signal via VAD / energy thresholding.
-    Prevents sampling silent leads or dead-air passages.
+    Optimized with safe edge padding and fallback handling.
     """
     curr_samples = audio.shape[-1]
     if curr_samples <= chunk_samples:
@@ -58,7 +58,7 @@ def select_active_crop(
     max_start = curr_samples - chunk_samples
     w_ch = audio[0]
     rms_full = np.sqrt(np.mean(w_ch ** 2) + 1e-12)
-    silence_thresh = max(1e-4, 0.15 * rms_full)
+    silence_thresh = max(1e-4, 0.10 * rms_full)
 
     best_start = 0
     best_score = -1.0
@@ -67,7 +67,7 @@ def select_active_crop(
         start = int(np.random.randint(0, max_start + 1))
         cand = w_ch[start : start + chunk_samples]
 
-        block_size = min(2400, chunk_samples)  # 50ms @ 48kHz
+        block_size = min(2400, chunk_samples)
         num_blocks = len(cand) // block_size
         if num_blocks > 1:
             blocks = cand[: num_blocks * block_size].reshape(num_blocks, block_size)

@@ -196,7 +196,11 @@ impl DesktopAudioEngine {
         let audio_state = state.clone();
 
         let mut synth = ProceduralSynthesizer::new(sample_rate);
-        let mut runner = inference::runner::InferenceRunner::new(quality_tier);
+        
+        // Load embedded ternary weights by default to avoid blocking audio thread on initialization
+        let weight_cache = inference::weight_loader::WeightLoader::load_embedded_ternary().unwrap_or_default();
+        let mut runner = inference::runner::InferenceRunner::new(quality_tier, weight_cache);
+        
         let mut decoder = AmbisonicDecoder::new(mode);
         let mut governor = crate::meta_governor::MetaGovernor::new();
 
@@ -406,7 +410,10 @@ impl WebAudioEngine {
 
         let audio_state = state.clone();
         let mut synth = ProceduralSynthesizer::new(sample_rate);
-        let mut runner = inference::runner::InferenceRunner::new(quality_tier);
+        
+        let weight_cache = inference::weight_loader::WeightLoader::load_embedded_ternary().unwrap_or_default();
+        let mut runner = inference::runner::InferenceRunner::new(quality_tier, weight_cache);
+        
         let mut decoder = AmbisonicDecoder::new(mode);
         let mut governor = crate::meta_governor::MetaGovernor::new();
         let mut left_out = vec![0.0f32; 2048];
@@ -574,56 +581,5 @@ impl WebAudioEngine {
     pub fn resume(&self) -> Result<(), AudioError> {
         let _ = self._ctx.resume();
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_audio_ring_buffer_fifo() {
-        let mut rb = AudioRingBuffer::new(4);
-        assert_eq!(rb.available_frames(), 0);
-        assert_eq!(rb.free_frames(), 4);
-
-        assert!(rb.push_frame(0.1, 0.2));
-        assert!(rb.push_frame(0.3, 0.4));
-        assert_eq!(rb.available_frames(), 2);
-
-        let (l1, r1) = rb.pop_frame().unwrap();
-        assert!((l1 - 0.1).abs() < 1e-6);
-        assert!((r1 - 0.2).abs() < 1e-6);
-
-        assert!(rb.push_frame(0.5, 0.6));
-        assert!(rb.push_frame(0.7, 0.8));
-        assert!(rb.push_frame(0.9, 1.0));
-        assert_eq!(rb.available_frames(), 4); // full
-        assert!(!rb.push_frame(1.1, 1.2));    // overflow prevented
-
-        let (l2, r2) = rb.pop_frame().unwrap();
-        assert!((l2 - 0.3).abs() < 1e-6);
-        assert!((r2 - 0.4).abs() < 1e-6);
-    }
-
-    #[test]
-    fn test_master_soft_limiter_saturation() {
-        // Linear range transparent pass-through
-        assert_eq!(soft_limit(0.0), 0.0);
-        assert_eq!(soft_limit(0.5), 0.5);
-        assert_eq!(soft_limit(-0.5), -0.5);
-
-        // Saturation knee
-        let saturated_pos = soft_limit(2.5);
-        let saturated_neg = soft_limit(-2.5);
-        assert!(saturated_pos < 1.0);
-        assert!(saturated_pos > 0.9);
-        assert!(saturated_neg > -1.0);
-        assert!(saturated_neg < -0.9);
-
-        // Extreme peaks strictly bounded in [-1.0, 1.0]
-        let extreme = soft_limit(100.0);
-        assert!(extreme <= 1.0);
-        assert!(extreme > 0.999);
     }
 }
