@@ -1,0 +1,50 @@
+[package]
+name = "utilities"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "rainai_prep"
+path = "src/bin/preprocess.rs"
+
+[[bin]]
+name = "rainai_upmix"
+path = "src/bin/spatial_upmix.rs"
+
+[[bin]]
+name = "rainai_features"
+path = "src/bin/audio_processor.rs"
+
+[[bin]]
+name = "rainai_synth"
+path = "src/bin/synth_rain.rs"
+
+[[bin]]
+name = "rainai_ingest"
+path = "src/bin/ingest.rs"
+
+[[bin]]
+name = "rainai_studio"
+path = "src/bin/tui.rs"
+
+[dependencies]
+hound = { workspace = true }
+rayon = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+reqwest = { workspace = true, features = ["blocking", "json", "stream"] }
+rand = { workspace = true }
+rand_distr = { workspace = true }
+rustfft = { workspace = true }
+ratatui = { workspace = true }
+crossterm = { workspace = true }
+sysinfo = { workspace = true }

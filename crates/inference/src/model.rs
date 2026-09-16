@@ -163,7 +163,7 @@ pub fn apply_equal_power_crossfade(source: &[f32], target: &[f32], output: &mut 
     }
 }
 
-/// Continuous Box-Cox homotopy dequantization kernel
+/// Continuous Box-Cox homotopy dequantizer kernel
 pub struct BoxCoxDequantizer;
 
 impl BoxCoxDequantizer {
@@ -183,7 +183,7 @@ impl BoxCoxDequantizer {
         let bits = val.to_bits();
         let sign = ((bits >> 31) & 1) as u16;
         let exp = ((bits >> 23) & 0xFF) as i32;
-        let mant = (bits & 0x7FFFFF) as u32;
+        let mant = bits & 0x7FFFFF; // Fixed redundant cast
 
         if exp == 255 {
             // Inf or NaN
@@ -327,7 +327,7 @@ impl BoxCoxDequantizer {
         }
         bit_pos -= 1; // Skip terminating bit
 
-        let k = if r == 1 { run_len as i32 - 1 } else { -(run_len as i32) };
+        let k = if r == 1 { run_len - 1 } else { -run_len }; // Fixed redundant cast
 
         let e = if bit_pos >= 0 {
             let bit = (u >> bit_pos) & 1;

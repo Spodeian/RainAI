@@ -9,7 +9,7 @@ pub fn ternary_matmul_simd_f32(
     gamma: f32,
 ) {
     let in_dim = activations.len();
-    let bytes_per_row = (in_dim + 3) / 4;
+    let bytes_per_row = in_dim.div_ceil(4);
 
     for (i, out_val) in output.iter_mut().enumerate() {
         let mut sum = 0.0;
@@ -49,8 +49,8 @@ pub fn ternary_matmul_simd_f32(
     use std::arch::wasm32::*;
 
     let in_dim = activations.len();
-    let bytes_per_row = (in_dim + 3) / 4;
-    let gamma_v = f32x4_splat(gamma);
+    let bytes_per_row = in_dim.div_ceil(4);
+    let _gamma_v = f32x4_splat(gamma);
 
     for (i, out_val) in output.iter_mut().enumerate() {
         let w_offset = i * bytes_per_row;

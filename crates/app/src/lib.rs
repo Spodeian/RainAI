@@ -155,7 +155,6 @@ impl TemplateApp {
         }
     }
 
-    /// Immediately persist current state to multi-tier storage (active persistence)
     pub fn persist_state(&mut self) {
         if let Ok(json_str) = serde_json::to_string(&self.state) {
             match save_state_multi_tier(DEDICATED_STORAGE_KEY, &json_str) {
@@ -276,8 +275,6 @@ impl TemplateApp {
         }
     }
 
-    /// Ensures that the background audio engine is initialized so circular ring buffer
-    /// pre-buffering primes to 100ms capacity immediately on application startup.
     pub fn ensure_audio_engine(&mut self) {
         if self.audio_state.is_none() {
             #[cfg(not(target_arch = "wasm32"))]
@@ -307,24 +304,18 @@ impl TemplateApp {
         }
     }
 
-    /// Synchronizes the real-time audio playback engine with UI parameter changes,
-    /// pre-buffering audio ahead of time and updating telemetry.
     pub fn sync_audio_engine(&mut self) {
-        // Primes pre-buffering immediately on startup across desktop and web
         self.ensure_audio_engine();
 
-        // Keep audio engine parameters and telemetry updated continuously
         if let Some(ref audio_state) = self.audio_state {
             audio_state.update_rain(&self.state.rain);
             audio_state.set_decode_mode(self.rain_view.decode_mode);
             audio_state.set_orientation(self.rain_view.listener_yaw, 0.0, 0.0);
             self.state.rain.telemetry = audio_state.get_telemetry();
 
-            // Feed spectral energy bins into spectrogram history
             let mut current_bins = [0.0f32; 32];
-            let time_sec = ui_time_approx(); // helper or context time
             for (i, bin) in current_bins.iter_mut().enumerate() {
-                let intensity = (self.state.rain.intensity * 0.7 
+                let intensity = (self.state.rain.weather.intensity * 0.7 
                     + (i as f32 * 0.25).sin().abs() * 0.3)
                     .clamp(0.0, 1.0);
                 *bin = intensity;
@@ -341,11 +332,6 @@ impl TemplateApp {
     }
 }
 
-fn ui_time_approx() -> f64 {
-    // lightweight fallback or passed time if needed
-    0.0
-}
-
 impl eframe::App for TemplateApp {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, &self.state);
@@ -357,20 +343,30 @@ impl eframe::App for TemplateApp {
         self.persist_state();
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        self.apply_theme(ui.ctx());
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.apply_theme(ctx);
+        
+        let egui_theme = match self.state.config.theme {
+            ThemeMode::Light | ThemeMode::HighContrastLight => egui::Theme::Light,
+            ThemeMode::Dark | ThemeMode::HighContrastDark => egui::Theme::Dark,
+        };
+
         if self.state.config.theme.is_high_contrast() {
-            ui.spacing_mut().interact_size = egui::vec2(44.0, 44.0);
-            ui.spacing_mut().button_padding = egui::vec2(14.0, 10.0);
+            ctx.style_mut_of(egui_theme, |style| {
+                style.spacing.interact_size = egui::vec2(44.0, 44.0);
+                style.spacing.button_padding = egui::vec2(14.0, 10.0);
+            });
         } else {
-            ui.spacing_mut().interact_size.y = ui.spacing_mut().interact_size.y.max(32.0);
-            ui.spacing_mut().button_padding = egui::vec2(12.0, 8.0);
+            ctx.style_mut_of(egui_theme, |style| {
+                style.spacing.interact_size.y = style.spacing.interact_size.y.max(32.0);
+                style.spacing.button_padding = egui::vec2(12.0, 8.0);
+            });
         }
-        self.handle_keyboard_shortcuts(ui.ctx());
+
+        self.handle_keyboard_shortcuts(ctx);
         self.sync_audio_engine();
 
-        // Periodic diagnostics poll (every 2 seconds)
-        let cur_time = ui.input(|i| i.time);
+        let cur_time = ctx.input(|i| i.time);
         if cur_time - self.last_diag_poll_time > 2.0 {
             self.last_diag_poll_time = cur_time;
             let queried = query_storage_diagnostics();
@@ -378,16 +374,20 @@ impl eframe::App for TemplateApp {
             self.storage_diag.pwa_install_available = queried.pwa_install_available;
             self.storage_diag.is_pwa_installed = queried.is_pwa_installed;
         }
+    }
 
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let constraints = ScreenConstraints::compute(ui);
+
+        // 1. Render navbar (Top Panel)
         components::navbar::render_navbar(self, ui, &constraints);
 
-        // Render the bottom spectrogram waterfall panel
+        // 2. Render bottom spectrogram waterfall panel
         render_spectrogram_panel(ui, &self.spectrogram_history);
 
+        // 3. Central content area
         egui::CentralPanel::default().show(ui, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
-                // RainAI Soundscape Studio
                 ui.group(|ui| {
                     ui.heading("🌧 RainAI Neural Spatial Soundscape Studio");
                     ui.label("Continuous, non-repetitive procedural rain synthesis conditioned on 554 physical parameters.");
@@ -397,6 +397,7 @@ impl eframe::App for TemplateApp {
             });
         });
 
+        // 4. Modals and warnings
         components::modals::render_dialogs(self, ui);
         components::modals::render_warning_banners(self, ui.ctx());
     }

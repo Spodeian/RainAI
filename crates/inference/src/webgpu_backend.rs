@@ -38,6 +38,7 @@ struct FoaUniforms {
 }
 
 pub struct GpuInferenceRunner {
+    #[allow(dead_code)]
     device: wgpu::Device,
     queue: wgpu::Queue,
     is_lost: Arc<AtomicBool>,
@@ -49,16 +50,25 @@ pub struct GpuInferenceRunner {
     foa_pipeline: wgpu::ComputePipeline,
     
     // Bind Groups
+    #[allow(dead_code)]
     projection_bind_group: wgpu::BindGroup,
+    #[allow(dead_code)]
     recurrence_bind_group: wgpu::BindGroup,
+    #[allow(dead_code)]
     moe_bind_group: wgpu::BindGroup,
+    #[allow(dead_code)]
     foa_bind_group: wgpu::BindGroup,
     
     // VRAM Buffers
+    #[allow(dead_code)]
     input_conditioning_buffer: wgpu::Buffer,
+    #[allow(dead_code)]
     latent_state_buffer: wgpu::Buffer,
+    #[allow(dead_code)]
     u_t_buffer: wgpu::Buffer,
+    #[allow(dead_code)]
     foa_output_buffer: wgpu::Buffer,
+    #[allow(dead_code)]
     foa_staging_buffer: wgpu::Buffer,
     
     pub foa_producer: ringbuf::Producer<f32, Arc<HeapRb<f32>>>,

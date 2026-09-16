@@ -97,7 +97,7 @@ impl WeightLoader {
 
     /// Packs discrete `i8` values in $\{-1, 0, 1\}$ into 2-bit packed bytes (4 weights per byte)
     pub fn pack_ternary_2bit(values: &[i8]) -> Vec<u8> {
-        let mut packed = Vec::with_capacity((values.len() + 3) / 4);
+        let mut packed = Vec::with_capacity(values.len().div_ceil(4));
         for chunk in values.chunks(4) {
             let mut byte = 0u8;
             for (i, &v) in chunk.iter().enumerate() {
@@ -143,7 +143,7 @@ impl WeightLoader {
             match format {
                 PrecisionFormat::Ternary158 => {
                     // 2-bit packed ternary: 4 values per byte
-                    let bytes_needed = (num_elements + 3) / 4;
+                    let bytes_needed = num_elements.div_ceil(4);
                     if byte_offset + bytes_needed > raw_slice.len() {
                         return Err(format!(
                             "Slice underflow reading layer {name}: needed {bytes_needed} bytes at offset {byte_offset}, total available {}",

@@ -27,9 +27,10 @@ impl SpectrogramHistory {
 }
 
 pub fn render_spectrogram_panel(ui: &mut Ui, history: &SpectrogramHistory) {
-    egui::TopBottomPanel::bottom("spectrogram_panel")
-        .min_height(130.0)
-        .show_inside(ui, |ui| {
+    egui::Frame::group(ui.style())
+        .fill(Color32::from_rgb(15, 18, 24))
+        .show(ui, |ui| {
+            ui.set_min_height(130.0);
             ui.horizontal(|ui| {
                 ui.heading("Real-Time Neural Spectrogram / Waterfall");
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -40,9 +41,6 @@ pub fn render_spectrogram_panel(ui: &mut Ui, history: &SpectrogramHistory) {
             let available_size = ui.available_size();
             let (response, painter) = ui.allocate_painter(available_size, egui::Sense::hover());
             let rect = response.rect;
-
-            // Deep background fill
-            painter.rect_filled(rect, 4.0, Color32::from_rgb(15, 18, 24));
 
             if history.columns.is_empty() {
                 painter.text(

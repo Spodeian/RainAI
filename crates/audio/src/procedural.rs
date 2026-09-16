@@ -59,7 +59,7 @@ impl PinkNoiseFilter {
     pub fn process(&mut self, white: f32) -> f32 {
         self.b0 = 0.99886 * self.b0 + white * 0.0555179;
         self.b1 = 0.99332 * self.b1 + white * 0.0750759;
-        self.b2 = 0.96900 * self.b2 + white * 0.1538520;
+        self.b2 = 0.96900 * self.b2 + white * 0.153_852;
         self.b3 = 0.86650 * self.b3 + white * 0.3104856;
         self.b4 = 0.55000 * self.b4 + white * 0.5329522;
         self.b5 = -0.7616 * self.b5 - white * 0.0168980;
@@ -142,6 +142,7 @@ impl ResonantBandpass {
 }
 
 /// 16 learned drift factors from RainAI neural deployment config
+#[allow(clippy::excessive_precision)]
 pub const LEARNED_DRIFT: [f32; 16] = [
     0.0033373055, 0.0027257325, 0.0011902788, -0.0008779404,
     -0.0014967915, 0.0032215454, 0.0022632028, -0.0006406382,
@@ -216,9 +217,9 @@ impl SubtractiveFilterbank16 {
             ResonantBandpass::default(),
         ];
 
-        for i in 0..16 {
+        for (i, filter) in filters.iter_mut().enumerate().take(16) {
             let tuned_freq = NOMINAL_BAND_FREQS[i] * (1.0 + LEARNED_DRIFT[i]);
-            filters[i] = ResonantBandpass::new(tuned_freq, NOMINAL_BAND_Q[i], sample_rate);
+            *filter = ResonantBandpass::new(tuned_freq, NOMINAL_BAND_Q[i], sample_rate);
         }
 
         Self { filters }
@@ -460,17 +461,12 @@ impl ProceduralSynthesizer {
         }
 
         // Master mixing into FOA B-Format:
-        // W: omnidirectional energy
-        // X: front-back
-        // Y: left-right
-        // Z: elevation (rain droplets falling from overhead + pitch angle)
         let rain_master = (total_rain + droplet_burst) * state.master_volume;
         let wind_master = total_wind * state.master_volume;
 
         let w = rain_master * 0.7071 + wind_master * 0.5 + side_w;
         let x = wind_master * 0.4 + side_x + (self.rng.next_f32() * 0.02 * rain_master);
         let y = (self.rng.next_f32() * 0.05 * rain_master) + side_y;
-        // Rain falls from above, giving positive Z elevation component
         let z = (rain_master * 0.45 * state.weather.pitch_angle.cos()) + side_z;
 
         FoaFrame::new(w, x, y, z)

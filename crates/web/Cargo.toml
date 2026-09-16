@@ -17,13 +17,12 @@ crate-type = ["cdylib", "rlib"]
 eframe = { workspace = true }
 wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
-web-sys = { workspace = true }
+web-sys = { workspace = true, features = ["Document", "Window", "HtmlCanvasElement", "Element", "Blob", "BlobPropertyBag", "Url", "HtmlAnchorElement", "HtmlDocument", "Location", "AudioContext", "AudioContextOptions", "AudioBuffer", "AudioBufferSourceNode", "AudioDestinationNode", "AudioNode", "GainNode", "ScriptProcessorNode", "AudioProcessingEvent"] }
 console_error_panic_hook = { workspace = true }
 tracing-web = { workspace = true }
-
 tracing = { workspace = true }
 app = { workspace = true }
-tracing-subscriber.workspace = true
+tracing-subscriber = { workspace = true }
 
 [features]
 default = ["accesskit", "persistence", "wgpu"]

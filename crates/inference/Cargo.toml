@@ -24,5 +24,5 @@ futures-intrusive = "0.5"
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
-web-sys = { workspace = true, features = ["Window", "Response"] }
+web-sys = { workspace = true, features = ["Document", "Window", "HtmlCanvasElement", "Element", "Blob", "BlobPropertyBag", "Url", "HtmlAnchorElement", "HtmlDocument", "Location", "AudioContext", "AudioContextOptions", "AudioBuffer", "AudioBufferSourceNode", "AudioDestinationNode", "AudioNode", "GainNode", "ScriptProcessorNode", "AudioProcessingEvent"] }
 js-sys = { workspace = true }

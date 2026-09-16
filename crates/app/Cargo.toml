@@ -28,7 +28,7 @@ ron = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { workspace = true }
-web-sys = { workspace = true, features = ["HtmlDocument", "Window", "Document", "Blob", "BlobPropertyBag", "Url", "HtmlAnchorElement", "Location", "Storage"] }
+web-sys = { workspace = true, features = ["Document", "Window", "HtmlCanvasElement", "Element", "Blob", "BlobPropertyBag", "Url", "HtmlAnchorElement", "HtmlDocument", "Location", "AudioContext", "AudioContextOptions", "AudioBuffer", "AudioBufferSourceNode", "AudioDestinationNode", "AudioNode", "GainNode", "ScriptProcessorNode", "AudioProcessingEvent"] }
 js-sys = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
