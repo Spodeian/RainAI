@@ -111,7 +111,7 @@ fn test_candle_pipeline_runner() {
         beta_kl: 0.001,
         use_real_data: false,
         use_flow_matching: true,
-        tau_cov: 0.75,
+        tau_moe: 0.75,
         max_thinking_steps: 3,
         eps_thinking_halt: 0.02,
         max_grad_norm: 1.0,
