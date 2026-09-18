@@ -26,7 +26,7 @@ pub struct MoeUniforms {
     pub num_experts: u32,
     pub latent_dim: u32,
     pub decay_factor: f32,
-    pub padding: u32,
+    pub tau_moe: f32,
 }
 
 #[repr(C)]
@@ -365,7 +365,7 @@ impl GpuInferenceRunner {
                 num_experts: 8,
                 latent_dim: 64,
                 decay_factor: 0.85,
-                padding: 0,
+                tau_moe: 0.75,
             }),
             usage: wgpu::BufferUsages::UNIFORM,
         });

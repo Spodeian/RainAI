@@ -36,7 +36,7 @@ The `crates/inference/data` directory serves as the **single source of truth** a
   8. `mamba2_deliberation.wgsl` (Iterative latent deliberation)
   9. `binaural_convolver.wgsl` (SO3 HRTF spatial audio rendering)
   10. `dequant.wgsl` (2-bit ternary & Box-Cox dequantizer)
-  11. `moe_dispatch.wgsl` (Top-K expert routing)
+  11. `moe_dispatch.wgsl` (Continuous smooth softmax & Hermite smoothstep expert modulation)
   12. `droplet_panning.wgsl` (Procedural droplet spatialization)
 
 ## 🧪 Testing & Verification
