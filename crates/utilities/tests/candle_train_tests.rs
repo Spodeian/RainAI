@@ -245,7 +245,11 @@ fn test_candle_invasive_meta_controller() {
     assert_eq!(out.diffusion_bypass.dims(), &[2, 1]);
     assert_eq!(out.synthesis_blend.dims(), &[2, 1]);
     assert_eq!(out.stress.dims(), &[2, 1]);
+    assert_eq!(out.pre_generated_steps.dims(), &[2, 1]);
     assert_eq!(out.next_telem_state.dims(), &[2, 32, 16]);
+
+    let rec_steps = out.recommended_steps();
+    assert!((1..=5).contains(&rec_steps), "Recommended steps must be in 1..=5: {rec_steps}");
 
     let loss = out.expert_mask.sqr().unwrap().mean_all().unwrap();
     let _grads = loss.backward().expect("MetaController backward pass failed");

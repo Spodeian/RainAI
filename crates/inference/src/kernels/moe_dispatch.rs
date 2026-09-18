@@ -3,12 +3,15 @@
 pub const MAX_SUPPORTED_EXPERTS: usize = 16;
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn route_and_decay(
+pub fn route_and_decay_with_history(
     latent_state: &mut [f32],
     router_weights: &[f32],
     num_experts: usize,
     tau_moe: f32,
     decay_factor: f32,
+    deliberation_history: Option<&[f32]>,
+    gamma_delib: f32,
+    mut out_weights: Option<&mut [f32]>,
 ) {
     let latent_dim = latent_state.len();
     let num_exp = num_experts.min(MAX_SUPPORTED_EXPERTS);
@@ -25,8 +28,20 @@ pub fn route_and_decay(
             .map(|(&w, &s)| w * s)
             .sum();
         logits[exp] = sum;
-        if sum > max_logit {
-            max_logit = sum;
+    }
+
+    // Apply temporal deliberation tabu across multiple iterations before generation
+    if let Some(hist) = deliberation_history {
+        if gamma_delib > 1e-6 {
+            for exp in 0..num_exp {
+                logits[exp] -= gamma_delib * hist.get(exp).copied().unwrap_or(0.0);
+            }
+        }
+    }
+
+    for exp in 0..num_exp {
+        if logits[exp] > max_logit {
+            max_logit = logits[exp];
         }
     }
 
@@ -46,6 +61,12 @@ pub fn route_and_decay(
         weights[exp] = exps[exp] * inv_sum;
     }
 
+    if let Some(ref mut out) = out_weights {
+        for exp in 0..num_exp.min(out.len()) {
+            out[exp] = weights[exp];
+        }
+    }
+
     // 3. Continuous Hermite C^1 smoothstep state retention across all experts
     // All experts participate smoothly — zero discrete winner-take-all switching
     let chunk_size = latent_dim / num_experts;
@@ -62,13 +83,36 @@ pub fn route_and_decay(
     }
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(not(target_arch = "wasm32"))]
 pub fn route_and_decay(
     latent_state: &mut [f32],
     router_weights: &[f32],
     num_experts: usize,
     tau_moe: f32,
     decay_factor: f32,
+) {
+    route_and_decay_with_history(
+        latent_state,
+        router_weights,
+        num_experts,
+        tau_moe,
+        decay_factor,
+        None,
+        0.0,
+        None,
+    );
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn route_and_decay_with_history(
+    latent_state: &mut [f32],
+    router_weights: &[f32],
+    num_experts: usize,
+    tau_moe: f32,
+    decay_factor: f32,
+    deliberation_history: Option<&[f32]>,
+    gamma_delib: f32,
+    mut out_weights: Option<&mut [f32]>,
 ) {
     use std::arch::wasm32::*;
 
@@ -101,8 +145,20 @@ pub fn route_and_decay(
             sum += router_weights[offset + j] * latent_state[j];
         }
         logits[exp] = sum;
-        if sum > max_logit {
-            max_logit = sum;
+    }
+
+    // Apply temporal deliberation tabu across multiple iterations before generation
+    if let Some(hist) = deliberation_history {
+        if gamma_delib > 1e-6 {
+            for exp in 0..num_exp {
+                logits[exp] -= gamma_delib * hist.get(exp).copied().unwrap_or(0.0);
+            }
+        }
+    }
+
+    for exp in 0..num_exp {
+        if logits[exp] > max_logit {
+            max_logit = logits[exp];
         }
     }
 
@@ -120,6 +176,12 @@ pub fn route_and_decay(
     let mut weights = [0.0f32; MAX_SUPPORTED_EXPERTS];
     for exp in 0..num_exp {
         weights[exp] = exps[exp] * inv_sum;
+    }
+
+    if let Some(ref mut out) = out_weights {
+        for exp in 0..num_exp.min(out.len()) {
+            out[exp] = weights[exp];
+        }
     }
 
     // 3. Continuous Hermite C^1 smoothstep state retention with SIMD
@@ -148,4 +210,24 @@ pub fn route_and_decay(
             *val *= retention;
         }
     }
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn route_and_decay(
+    latent_state: &mut [f32],
+    router_weights: &[f32],
+    num_experts: usize,
+    tau_moe: f32,
+    decay_factor: f32,
+) {
+    route_and_decay_with_history(
+        latent_state,
+        router_weights,
+        num_experts,
+        tau_moe,
+        decay_factor,
+        None,
+        0.0,
+        None,
+    );
 }

@@ -63,7 +63,7 @@ class InvasiveMetaController(nn.Module):
             nn.Linear(64, 64),
             nn.LayerNorm(64),
             nn.SiLU(),
-            nn.Linear(64, num_experts + 4)
+            nn.Linear(64, num_experts + 5)
         )
 
     def forward(
@@ -186,7 +186,11 @@ class InvasiveMetaController(nn.Module):
         raw_blend = torch.sigmoid(raw_out[:, self.num_experts+3:self.num_experts+4])
         synthesis_blend = torch.clamp(raw_blend + stress, min=0.0, max=1.0)
         
-        # 7. Recommended Dynamic Safety Buffer Reserve (in ms)
+        # 7. Recommended Pre-Generated / Thinking Steps in [1.0, 5.0]
+        raw_steps = torch.sigmoid(raw_out[:, self.num_experts+4:self.num_experts+5])
+        pre_generated_steps = 1.0 + 4.0 * raw_steps * (1.0 - 0.75 * stress)
+
+        # 8. Recommended Dynamic Safety Buffer Reserve (in ms)
         safety_reserve_ms = 15.0 + 25.0 * jitter + 15.0 * hw_starvation
 
         return {
@@ -195,6 +199,7 @@ class InvasiveMetaController(nn.Module):
             "ambisonic_order": ambisonic_order,
             "diffusion_bypass": diffusion_bypass,
             "synthesis_blend": synthesis_blend,
+            "pre_generated_steps": pre_generated_steps,
             "panic_factor": buffer_panic,
             "quality_drop": quality_drop,
             "jitter_factor": jitter,

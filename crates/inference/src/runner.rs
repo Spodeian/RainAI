@@ -187,6 +187,17 @@ impl InferenceRunner {
         self.thinking_steps = steps.clamp(1, 5);
     }
 
+    /// Set pre-generated deliberation steps (clamped 1..=5).
+    /// Dynamically alterable by the Invasive Meta-Controller or user override.
+    pub fn set_pre_generated_steps(&mut self, steps: usize) {
+        self.set_thinking_steps(steps);
+    }
+
+    /// Get current amount of pre-generated deliberation steps
+    pub fn pre_generated_steps(&self) -> usize {
+        self.thinking_steps
+    }
+
     /// Enable or disable 1-step consistency distillation jump head
     pub fn set_use_consistency_jump(&mut self, enabled: bool) {
         self.use_consistency_jump = enabled;
@@ -327,8 +338,10 @@ impl InferenceRunner {
         let iterations = self.thinking_steps.clamp(1, 5);
         let tau_moe = 0.75f32; // Continuous temperature for smooth softmax routing
         let decay_factor = 0.85; // Unselected expert state decay floor
+        let gamma_delib = if iterations > 1 { 0.40f32 } else { 0.0f32 };
+        let mut delib_history = [0.0f32; 16];
 
-        for _ in 0..iterations {
+        for iter in 0..iterations {
             let prev_latent = self.latent_state;
 
             if let (Some(a_diag), Some(b_diag)) = (
@@ -357,28 +370,38 @@ impl InferenceRunner {
             }
 
             if let Some(router) = self.weight_cache.get("moe.router.weight") {
+                let mut step_weights = [0.0f32; 16];
                 match self.moe_mode {
                     MoeExecutionMode::SparseDynamic => {
-                        kernels::route_and_decay(
+                        kernels::route_and_decay_with_history(
                             &mut self.latent_state,
                             &router.weights,
                             8, // Total experts
                             tau_moe,
                             decay_factor,
+                            if iter > 0 { Some(&delib_history) } else { None },
+                            gamma_delib,
+                            Some(&mut step_weights),
                         );
                     }
                     MoeExecutionMode::DenseSoupDynamic | MoeExecutionMode::DenseSoupStatic => {
                         // In dense soup mode, state is preserved without sparse decay
                     }
                     MoeExecutionMode::DualMacroSoup => {
-                        kernels::route_and_decay(
+                        kernels::route_and_decay_with_history(
                             &mut self.latent_state,
                             &router.weights,
                             8,
                             tau_moe * 0.5, // Sharpened specialist focus + shared base
                             decay_factor,
+                            if iter > 0 { Some(&delib_history) } else { None },
+                            gamma_delib,
+                            Some(&mut step_weights),
                         );
                     }
+                }
+                for e in 0..8 {
+                    delib_history[e] += step_weights[e];
                 }
             }
         }

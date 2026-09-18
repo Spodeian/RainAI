@@ -59,6 +59,8 @@ pub struct MetaGovernor {
     pub ambisonic_order_reduced: bool,
     pub thinking_steps: usize,
     pub use_consistency_jump: bool,
+    pub meta_controller_steps: Option<usize>,
+    pub meta_controller_diffusion_bypass: Option<bool>,
     pub current_capacity_frames: usize,
     pub buffer_cooldown_timer: f32,
     pub quant_cooldown_timer: f32,
@@ -83,6 +85,8 @@ impl Default for MetaGovernor {
             ambisonic_order_reduced: false,
             thinking_steps: 3,
             use_consistency_jump: false,
+            meta_controller_steps: None,
+            meta_controller_diffusion_bypass: None,
             current_capacity_frames: 4320,
             buffer_cooldown_timer: 2.0,
             quant_cooldown_timer: 15.0,
@@ -110,6 +114,22 @@ impl MetaGovernor {
         Self::default()
     }
 
+    /// Dynamically alters the pre-generated steps via the neural Meta-Controller
+    pub fn set_meta_controller_steps(&mut self, steps: Option<usize>) {
+        self.meta_controller_steps = steps.map(|s| s.clamp(1, 5));
+    }
+
+    /// Update governor directly with neural Meta-Controller output
+    pub fn update_from_meta_controller(&mut self, recommended_steps: usize, stress: f32) {
+        let clamped = recommended_steps.clamp(1, 5);
+        self.meta_controller_steps = Some(clamped);
+        if stress > 0.65 {
+            self.meta_controller_diffusion_bypass = Some(true);
+        } else {
+            self.meta_controller_diffusion_bypass = None;
+        }
+    }
+
     /// Evaluates current telemetry against optimization profile, dynamic buffer size, and stress
     pub fn evaluate(
         &mut self,
@@ -135,7 +155,10 @@ impl MetaGovernor {
 
         // Offline Max Quality Mode Decoupling: latency budget = inf, buffer = 100%, max fidelity
         if mode == MetaControllerInterceptionMode::OfflineMaxQuality {
-            let steps = user_thinking_override.unwrap_or(5).clamp(1, 5);
+            let steps = user_thinking_override
+                .or(self.meta_controller_steps)
+                .unwrap_or(5)
+                .clamp(1, 5);
             return GovernorAction {
                 recommended_tier: QualityTier::StudioFp32,
                 recommended_path: self.current_path,
@@ -237,7 +260,10 @@ impl MetaGovernor {
                 QualityTier::StudioFp32 => (32.0, 32.0),
             };
             let recommended_format = PrecisionFormat::from_continuous_bit_width(bits.1);
-            let steps = user_thinking_override.unwrap_or(telemetry.thinking_steps).clamp(1, 5);
+            let steps = user_thinking_override
+                .or(self.meta_controller_steps)
+                .unwrap_or(telemetry.thinking_steps)
+                .clamp(1, 5);
             return GovernorAction {
                 recommended_tier: user_target_tier,
                 recommended_path: self.current_path,
@@ -313,7 +339,9 @@ impl MetaGovernor {
         }
 
         // Meta-Controller Action 2: Latent Diffusion Bypass
-        self.diffusion_bypass = sim_panic > 0.70 || buffer_health_ratio < 0.35;
+        self.diffusion_bypass = self.meta_controller_diffusion_bypass.unwrap_or(false)
+            || sim_panic > 0.70
+            || buffer_health_ratio < 0.35;
 
         // Meta-Controller Action 3: Ambisonic Order Scaling
         self.ambisonic_order_reduced = sim_panic > 0.85;
@@ -351,15 +379,21 @@ impl MetaGovernor {
             }
         }
 
-        // User thinking steps override takes precedence
+        // Deliberation / Thinking steps resolution:
+        // 1. User manual override takes highest priority
+        // 2. Meta-Controller alterable recommendation takes second priority
+        // 3. Profile defaults and stress response apply otherwise
         if let Some(steps) = user_thinking_override {
             self.thinking_steps = steps.clamp(1, 5);
+            self.use_consistency_jump = self.thinking_steps == 1;
+        } else if let Some(mc_steps) = self.meta_controller_steps {
+            self.thinking_steps = mc_steps.clamp(1, 5);
             self.use_consistency_jump = self.thinking_steps == 1;
         }
 
         if is_under_stress {
             self.stability_timer = 0.0;
-            if user_thinking_override.is_none() {
+            if user_thinking_override.is_none() && self.meta_controller_steps.is_none() {
                 self.use_consistency_jump = true;
                 self.thinking_steps = 1;
             }

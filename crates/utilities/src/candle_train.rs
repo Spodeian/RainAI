@@ -971,7 +971,19 @@ pub struct CandleMetaTelemetryOutput {
     pub diffusion_bypass: Tensor,
     pub synthesis_blend: Tensor,
     pub stress: Tensor,
+    pub pre_generated_steps: Tensor,
     pub next_telem_state: Tensor,
+}
+
+impl CandleMetaTelemetryOutput {
+    /// Returns discrete recommended pre-generated / thinking steps (1..=5)
+    pub fn recommended_steps(&self) -> usize {
+        if let Ok(val) = self.pre_generated_steps.mean_all().and_then(|t| t.to_scalar::<f32>()) {
+            (val.round() as usize).clamp(1, 5)
+        } else {
+            3
+        }
+    }
 }
 
 /// Global Invasive Meta-Controller in Candle.
@@ -1004,7 +1016,7 @@ impl CandleInvasiveMetaController {
 
         let fusion_fc1 = linear(in_dim + 32, 64, vs.pp("fusion_fc1"))?;
         let fusion_fc2 = linear(64, 64, vs.pp("fusion_fc2"))?;
-        let fusion_out = linear(64, num_experts + 4, vs.pp("fusion_out"))?;
+        let fusion_out = linear(64, num_experts + 5, vs.pp("fusion_out"))?;
 
         Ok(Self {
             num_experts,
@@ -1060,6 +1072,12 @@ impl CandleInvasiveMetaController {
         let buf_health = telemetry.narrow(1, 0, 1)?;
         let stress = candle_nn::ops::sigmoid(&((25.0 - &buf_health)? / 25.0)?)?;
 
+        let raw_steps = candle_nn::ops::sigmoid(&raw_out.narrow(1, self.num_experts + 4, 1)?)?;
+        // pre_generated_steps in continuous range [1.0, 5.0]
+        // Modulated by hardware stress: high stress drops steps toward 1 to save latency
+        let stress_damping = ((1.0 - (&stress * 0.75)?)?).clamp(0.0, 1.0)?;
+        let pre_generated_steps = ((&raw_steps * 4.0)?.broadcast_mul(&stress_damping)? + 1.0)?;
+
         Ok(CandleMetaTelemetryOutput {
             expert_mask: expert_gates,
             tau_moe,
@@ -1067,6 +1085,7 @@ impl CandleInvasiveMetaController {
             diffusion_bypass: diff_gate,
             synthesis_blend: blend_gate,
             stress,
+            pre_generated_steps,
             next_telem_state,
         })
     }
@@ -2474,14 +2493,16 @@ pub fn run_candle_training_pipeline_with_steering(
                     let mut tabu_sum = router_probs.clone();
                     let mut z_delib = z_pred.copy()?;
 
-                    for _ in 1..m_batch {
+                    for iter in 1..m_batch {
+                        // Dynamically scale tabu so subsequent iterations push into distinct expert subspaces
+                        let dynamic_tabu = config.gamma_tabu * (1.0 + 0.25 * (iter as f64));
                         let (step_z, _, step_probs, _, _, _) = mamba_model.forward_smooth_tabu(
                             &z_delib,
                             &batch.conditioning,
                             &h_state,
                             config.tau_moe,
                             Some(&tabu_sum),
-                            config.gamma_tabu,
+                            dynamic_tabu,
                         )?;
                         tabu_sum = (&tabu_sum + &step_probs)?;
                         prob_history.push(step_probs);

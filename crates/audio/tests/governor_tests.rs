@@ -426,3 +426,73 @@ fn test_governor_recommends_dense_soup_under_battery_and_stress() {
     assert_eq!(severe_action.recommended_moe_mode, MoeExecutionMode::DenseSoupStatic);
 }
 
+#[test]
+fn test_meta_controller_alterable_pre_generated_steps() {
+    let mut gov = MetaGovernor::new();
+    let nominal_telemetry = EngineTelemetry {
+        buffer_health_ms: 45.0,
+        cpu_headroom: 0.80,
+        panic_factor: 0.05,
+        ..Default::default()
+    };
+
+    // 1. Baseline: BalancedAdaptive default thinking steps is 3
+    let base_action = gov.evaluate(
+        &nominal_telemetry,
+        QualityTier::AdaptiveMinimum,
+        true,
+        GovernorOptimizationProfile::BalancedAdaptive,
+        HardwareStressProfile::NominalDesktop,
+        MetaControllerInterceptionMode::MediatedLive,
+        None,
+        0.1,
+    );
+    assert_eq!(base_action.thinking_steps, 3);
+    assert!(!base_action.use_consistency_jump);
+
+    // 2. Meta-Controller alterable command: recommend 4 pre-generated steps
+    gov.set_meta_controller_steps(Some(4));
+    let mc_action = gov.evaluate(
+        &nominal_telemetry,
+        QualityTier::AdaptiveMinimum,
+        true,
+        GovernorOptimizationProfile::BalancedAdaptive,
+        HardwareStressProfile::NominalDesktop,
+        MetaControllerInterceptionMode::MediatedLive,
+        None,
+        0.1,
+    );
+    assert_eq!(mc_action.thinking_steps, 4);
+    assert!(!mc_action.use_consistency_jump);
+
+    // 3. Meta-Controller dynamic update under high stress: recommend 1 step
+    gov.update_from_meta_controller(1, 0.85);
+    let stress_action = gov.evaluate(
+        &nominal_telemetry,
+        QualityTier::AdaptiveMinimum,
+        true,
+        GovernorOptimizationProfile::BalancedAdaptive,
+        HardwareStressProfile::NominalDesktop,
+        MetaControllerInterceptionMode::MediatedLive,
+        None,
+        0.1,
+    );
+    assert_eq!(stress_action.thinking_steps, 1);
+    assert!(stress_action.use_consistency_jump);
+    assert!(stress_action.diffusion_bypass);
+
+    // 4. User override takes ultimate precedence even over Meta-Controller
+    let override_action = gov.evaluate(
+        &nominal_telemetry,
+        QualityTier::AdaptiveMinimum,
+        true,
+        GovernorOptimizationProfile::BalancedAdaptive,
+        HardwareStressProfile::NominalDesktop,
+        MetaControllerInterceptionMode::MediatedLive,
+        Some(5),
+        0.1,
+    );
+    assert_eq!(override_action.thinking_steps, 5);
+}
+
+
