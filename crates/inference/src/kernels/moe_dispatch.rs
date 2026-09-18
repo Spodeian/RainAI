@@ -7,48 +7,57 @@ pub fn route_and_decay(
     latent_state: &mut [f32],
     router_weights: &[f32],
     num_experts: usize,
-    top_k: usize,
+    tau_moe: f32,
     decay_factor: f32,
 ) {
     let latent_dim = latent_state.len();
     let num_exp = num_experts.min(MAX_SUPPORTED_EXPERTS);
     let mut logits = [0.0f32; MAX_SUPPORTED_EXPERTS];
+    let mut max_logit = f32::NEG_INFINITY;
 
-    // 1. Calculate router logits on stack
+    // 1. Calculate router logits
     for exp in 0..num_exp {
         let offset = exp * latent_dim;
         let w_slice = &router_weights[offset..offset + latent_dim];
-        logits[exp] = w_slice
+        let sum: f32 = w_slice
             .iter()
             .zip(latent_state.iter())
             .map(|(&w, &s)| w * s)
             .sum();
-    }
-
-    // 2. Allocation-free partial top-K selection (O(K * E), typically 2 * 8 = 16 ops)
-    let k = top_k.min(num_exp);
-    let mut selected_indices = [usize::MAX; 4];
-
-    for rank in 0..k.min(4) {
-        let mut best_val = f32::NEG_INFINITY;
-        let mut best_idx = 0;
-        for exp in 0..num_exp {
-            if !selected_indices[..rank].contains(&exp) && logits[exp] > best_val {
-                best_val = logits[exp];
-                best_idx = exp;
-            }
+        logits[exp] = sum;
+        if sum > max_logit {
+            max_logit = sum;
         }
-        selected_indices[rank] = best_idx;
     }
 
-    // 3. Decay latents of unselected experts
+    // 2. Numerically stable, temperature-scaled continuous softmax routing
+    let tau = tau_moe.max(0.05);
+    let mut sum_exp = 0.0f32;
+    let mut exps = [0.0f32; MAX_SUPPORTED_EXPERTS];
+    for exp in 0..num_exp {
+        let e = ((logits[exp] - max_logit) / tau).exp();
+        exps[exp] = e;
+        sum_exp += e;
+    }
+
+    let inv_sum = 1.0 / sum_exp.max(1e-8);
+    let mut weights = [0.0f32; MAX_SUPPORTED_EXPERTS];
+    for exp in 0..num_exp {
+        weights[exp] = exps[exp] * inv_sum;
+    }
+
+    // 3. Continuous Hermite C^1 smoothstep state retention across all experts
+    // All experts participate smoothly — zero discrete winner-take-all switching
     let chunk_size = latent_dim / num_experts;
     for exp in 0..num_exp {
-        if !selected_indices[..k.min(4)].contains(&exp) {
-            let start = exp * chunk_size;
-            for val in &mut latent_state[start..start + chunk_size] {
-                *val *= decay_factor;
-            }
+        let p = weights[exp];
+        let norm_p = (p * num_exp as f32 * 0.5).clamp(0.0, 1.0);
+        let smooth_factor = norm_p * norm_p * (3.0 - 2.0 * norm_p); // Hermite C1 smoothstep
+        let retention = decay_factor + smooth_factor * (1.0 - decay_factor);
+
+        let start = exp * chunk_size;
+        for val in &mut latent_state[start..start + chunk_size] {
+            *val *= retention;
         }
     }
 }
@@ -58,7 +67,7 @@ pub fn route_and_decay(
     latent_state: &mut [f32],
     router_weights: &[f32],
     num_experts: usize,
-    top_k: usize,
+    tau_moe: f32,
     decay_factor: f32,
 ) {
     use std::arch::wasm32::*;
@@ -66,6 +75,7 @@ pub fn route_and_decay(
     let latent_dim = latent_state.len();
     let num_exp = num_experts.min(MAX_SUPPORTED_EXPERTS);
     let mut logits = [0.0f32; MAX_SUPPORTED_EXPERTS];
+    let mut max_logit = f32::NEG_INFINITY;
 
     // 1. Vectorized logit dot products
     let iters_4 = latent_dim / 4;
@@ -91,45 +101,51 @@ pub fn route_and_decay(
             sum += router_weights[offset + j] * latent_state[j];
         }
         logits[exp] = sum;
-    }
-
-    // 2. Allocation-free partial top-K selection
-    let k = top_k.min(num_exp);
-    let mut selected_indices = [usize::MAX; 4];
-
-    for rank in 0..k.min(4) {
-        let mut best_val = f32::NEG_INFINITY;
-        let mut best_idx = 0;
-        for exp in 0..num_exp {
-            if !selected_indices[..rank].contains(&exp) && logits[exp] > best_val {
-                best_val = logits[exp];
-                best_idx = exp;
-            }
+        if sum > max_logit {
+            max_logit = sum;
         }
-        selected_indices[rank] = best_idx;
     }
 
-    // 3. SIMD-vectorized state decay for unselected experts
+    // 2. Numerically stable, temperature-scaled continuous softmax
+    let tau = tau_moe.max(0.05);
+    let mut sum_exp = 0.0f32;
+    let mut exps = [0.0f32; MAX_SUPPORTED_EXPERTS];
+    for exp in 0..num_exp {
+        let e = ((logits[exp] - max_logit) / tau).exp();
+        exps[exp] = e;
+        sum_exp += e;
+    }
+
+    let inv_sum = 1.0 / sum_exp.max(1e-8);
+    let mut weights = [0.0f32; MAX_SUPPORTED_EXPERTS];
+    for exp in 0..num_exp {
+        weights[exp] = exps[exp] * inv_sum;
+    }
+
+    // 3. Continuous Hermite C^1 smoothstep state retention with SIMD
     let chunk_size = latent_dim / num_experts;
-    let decay_v = f32x4_splat(decay_factor);
 
     for exp in 0..num_exp {
-        if !selected_indices[..k.min(4)].contains(&exp) {
-            let start = exp * chunk_size;
-            let slice = &mut latent_state[start..start + chunk_size];
-            let chunk_iters = slice.len() / 4;
+        let p = weights[exp];
+        let norm_p = (p * num_exp as f32 * 0.5).clamp(0.0, 1.0);
+        let smooth_factor = norm_p * norm_p * (3.0 - 2.0 * norm_p);
+        let retention = decay_factor + smooth_factor * (1.0 - decay_factor);
 
-            unsafe {
-                for c in 0..chunk_iters {
-                    let ptr = slice.as_mut_ptr().add(c * 4) as *mut v128;
-                    let v = v128_load(ptr as *const v128);
-                    v128_store(ptr, f32x4_mul(v, decay_v));
-                }
-            }
+        let retention_v = f32x4_splat(retention);
+        let start = exp * chunk_size;
+        let slice = &mut latent_state[start..start + chunk_size];
+        let chunk_iters = slice.len() / 4;
 
-            for val in &mut slice[(chunk_iters * 4)..] {
-                *val *= decay_factor;
+        unsafe {
+            for c in 0..chunk_iters {
+                let ptr = slice.as_mut_ptr().add(c * 4) as *mut v128;
+                let v = v128_load(ptr as *const v128);
+                v128_store(ptr, f32x4_mul(v, retention_v));
             }
+        }
+
+        for val in &mut slice[(chunk_iters * 4)..] {
+            *val *= retention;
         }
     }
 }

@@ -123,6 +123,7 @@ fn test_candle_pipeline_runner() {
         mfp_decay: 0.5,
         lambda_soup_deficit: 0.1,
         enable_latent_caching: false,
+        continuous_refinement: false,
         output_dir: temp_dir.clone(),
         device: "cpu".to_string(),
     };
@@ -150,7 +151,7 @@ fn test_candle_pipeline_runner() {
     // Verify manifest contains new training telemetry fields
     let manifest_content = std::fs::read_to_string(&manifest_path).expect("Failed reading manifest");
     let v: serde_json::Value = serde_json::from_str(&manifest_content).expect("Invalid JSON in manifest");
-    assert_eq!(v["tau_cov"], 0.75);
+    assert_eq!(v["tau_moe"], 0.75);
     assert_eq!(v["max_thinking_steps"], 3);
     assert_eq!(v["enable_distillation"], true);
     assert_eq!(v["lambda_div"], 0.05);

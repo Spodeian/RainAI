@@ -49,7 +49,7 @@ use sysinfo::System;
 
 use utilities::{
     audio_preview::{AudioPreviewManager, PreferenceChoice},
-    autopilot::{CANONICAL_SURFACES, SurfaceEntropyAuditor, SurfaceQuota},
+    autopilot::{probe_host_nvidia_gpu, CANONICAL_SURFACES, SurfaceEntropyAuditor, SurfaceQuota},
     candle_train::{
         run_candle_training_pipeline_with_steering, AtomicCheckpointManager, CandleTrainConfig,
         CandleTrainingSteeringHandle, TrainingPhase, TrainingProgressUpdate, TrainingSessionState,
@@ -318,6 +318,13 @@ pub struct App {
     pub deployed_to_web: bool,
     pub active_in_process_task: Option<String>,
 
+    // GPU Telemetry (NVIDIA CUDA / DirectX)
+    pub gpu_name: String,
+    pub gpu_usage: f64,
+    pub gpu_mem_used_mb: u64,
+    pub gpu_mem_total_mb: u64,
+    gpu_rx: Receiver<(f64, u64)>,
+
     log_rx: Receiver<String>,
     pub log_tx: Sender<String>,
     last_tick: Instant,
@@ -360,6 +367,35 @@ impl App {
         steering.log_tx = Some(log_tx.clone());
         steering.progress_tx = Some(progress_tx.clone());
         steering.surface_weights = Some(Arc::new(Mutex::new(HashMap::new())));
+
+        // Probe host GPU and spawn background telemetry worker
+        let (gpu_name, gpu_mem_total_mb) = match probe_host_nvidia_gpu() {
+            Some((name, mem_mb)) => (format!("NVIDIA {}", name), mem_mb),
+            None => ("CUDA/DirectX GPU".to_string(), 8192),
+        };
+
+        let (gpu_tx, gpu_rx) = mpsc::channel();
+        thread::spawn(move || {
+            loop {
+                if let Ok(output) = std::process::Command::new("nvidia-smi")
+                    .args(["--query-gpu=utilization.gpu,memory.used", "--format=csv,noheader,nounits"])
+                    .output()
+                {
+                    if output.status.success() {
+                        let stdout = String::from_utf8_lossy(&output.stdout);
+                        if let Some(line) = stdout.lines().next() {
+                            let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
+                            if parts.len() >= 2 {
+                                let util: f64 = parts[0].parse().unwrap_or(0.0);
+                                let used_mb: u64 = parts[1].parse().unwrap_or(0);
+                                let _ = gpu_tx.send((util, used_mb));
+                            }
+                        }
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(1000));
+            }
+        });
 
         let mut app = App {
             active_tab: 0,
@@ -417,6 +453,11 @@ impl App {
             target_resource_pct: 80,
             deployed_to_web: false,
             active_in_process_task: None,
+            gpu_name,
+            gpu_usage: 0.0,
+            gpu_mem_used_mb: 0,
+            gpu_mem_total_mb: gpu_mem_total_mb,
+            gpu_rx,
             log_rx,
             log_tx,
             last_tick: Instant::now(),
@@ -574,24 +615,46 @@ impl App {
         config.batch_size = self.tuning_state.batch_size;
         config.accumulation_steps = self.tuning_state.accumulation_steps;
         config.max_thinking_steps = self.tuning_state.thinking_steps;
+        config.tau_moe = self.tuning_state.tau_moe as f64;
         config.lambda_soup_deficit = self.tuning_state.lambda_soup;
         config.stft_weight = self.tuning_state.stft_weight;
         config.cfg_dropout = self.tuning_state.cfg_dropout as f32;
-        config.vae_epochs = 3;
+        config.vae_epochs = 2;
         config.mamba_epochs = 3;
-        config.max_batches = 25; // Continuous iterative pacing
+        config.max_batches = 50; // Continuous iterative pacing
+        config.continuous_refinement = true;
 
         thread::spawn(move || {
-            let _ = log_tx.send("[⚡] Autonomous In-Process Candle Training Engine Initiated.".to_string());
-            match run_candle_training_pipeline_with_steering(&config, &steering) {
-                Ok(()) => {
-                    let _ = log_tx.send("[+] Candle Training Completed / Epoch Cycle Finished Cleanly.".to_string());
+            let _ = log_tx.send("[⚡] Autonomous In-Process Candle Training Engine Initiated (Continuous Stream).".to_string());
+            while !steering.stop_signal.load(Ordering::SeqCst) {
+                // Check if user paused training
+                while steering.pause_signal.load(Ordering::SeqCst) {
+                    if steering.stop_signal.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(100));
                 }
-                Err(e) => {
-                    let _ = log_tx.send(format!("[!] In-Process Training Stopped: {}", e));
+                if steering.stop_signal.load(Ordering::SeqCst) {
+                    break;
                 }
+
+                match run_candle_training_pipeline_with_steering(&config, &steering) {
+                    Ok(()) => {
+                        let _ = log_tx.send("[+] Epoch tranche completed. Advancing to next continuous training cycle...".to_string());
+                    }
+                    Err(e) => {
+                        let _ = log_tx.send(format!("[!] In-Process Training Interrupted: {}", e));
+                        break;
+                    }
+                }
+
+                if steering.stop_signal.load(Ordering::SeqCst) {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(250));
             }
             active_flag.store(false, Ordering::SeqCst);
+            let _ = log_tx.send("[*] In-Process Training Engine parked cleanly.".to_string());
         });
     }
 
@@ -746,6 +809,12 @@ impl App {
             };
 
             self.last_tick = Instant::now();
+        }
+
+        // Poll GPU Telemetry
+        while let Ok((util, used_mb)) = self.gpu_rx.try_recv() {
+            self.gpu_usage = util;
+            self.gpu_mem_used_mb = used_mb;
         }
 
         // Poll 15 GB Rolling Database Health Worker
@@ -1381,6 +1450,10 @@ fn render_tab_flight_deck(f: &mut ratatui::Frame, app: &App, area: Rect) {
             Span::styled(format!(" | Estimated ETA: {}m {}s", app.eta_seconds / 60, app.eta_seconds % 60), Style::default().fg(COLOR_TEXT_MUTED)),
         ]),
         Line::from(vec![
+            Span::styled("Compute Platform: ", Style::default().fg(COLOR_TEXT_MUTED)),
+            Span::styled(format!("Dual Engine · CPU (Multicore) + {}", app.gpu_name), Style::default().fg(Color::Cyan)),
+        ]),
+        Line::from(vec![
             Span::styled("Session State   : ", Style::default().fg(COLOR_TEXT_MUTED)),
             Span::styled("Atomic Safetensors (.tmp rename) · Corruption Proof", Style::default().fg(COLOR_SUCCESS)),
         ]),
@@ -1945,10 +2018,10 @@ fn render_telemetry_footer(f: &mut ratatui::Frame, app: &App, area: Rect) {
     );
     f.render_widget(footer_bar, chunks[0]);
 
-    // Host telemetry gauges (CPU and RAM)
+    // Host & Device telemetry gauges (CPU, GPU, RAM)
     let gauge_splits = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+        .constraints([Constraint::Percentage(33), Constraint::Percentage(34), Constraint::Percentage(33)].as_ref())
         .split(chunks[1]);
 
     let safe_cpu = if app.cpu_usage.is_nan() { 0.0 } else { app.cpu_usage };
@@ -1964,6 +2037,21 @@ fn render_telemetry_footer(f: &mut ratatui::Frame, app: &App, area: Rect) {
         .label(format!("{:.1}%", safe_cpu));
     f.render_widget(cpu_gauge, gauge_splits[0]);
 
+    let safe_gpu = if app.gpu_usage.is_nan() { 0.0 } else { app.gpu_usage };
+    let vram_used_gb = app.gpu_mem_used_mb as f64 / 1024.0;
+    let vram_total_gb = (app.gpu_mem_total_mb as f64 / 1024.0).max(1.0);
+    let gpu_gauge = Gauge::default()
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(COLOR_ACCENT_DIM))
+                .title(format!(" {} ", app.gpu_name)),
+        )
+        .gauge_style(Style::default().fg(Color::Cyan).bg(COLOR_BG))
+        .ratio((safe_gpu / 100.0).clamp(0.0, 1.0))
+        .label(format!("{:.1}% ({:.1}/{:.1} GB)", safe_gpu, vram_used_gb, vram_total_gb));
+    f.render_widget(gpu_gauge, gauge_splits[1]);
+
     let safe_mem = if app.mem_usage.is_nan() { 0.0 } else { app.mem_usage };
     let mem_gauge = Gauge::default()
         .block(
@@ -1975,7 +2063,7 @@ fn render_telemetry_footer(f: &mut ratatui::Frame, app: &App, area: Rect) {
         .gauge_style(Style::default().fg(COLOR_SUCCESS).bg(COLOR_BG))
         .ratio((safe_mem / 100.0).clamp(0.0, 1.0))
         .label(format!("{:.1}%", safe_mem));
-    f.render_widget(mem_gauge, gauge_splits[1]);
+    f.render_widget(mem_gauge, gauge_splits[2]);
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {

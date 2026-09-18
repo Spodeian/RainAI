@@ -325,8 +325,8 @@ impl InferenceRunner {
 
         // 2. Mamba2 Recurrence & MoE Dispatch across Thinking Deliberation Steps (1..=5)
         let iterations = self.thinking_steps.clamp(1, 5);
-        let top_k = 2; // Route to top 2 experts
-        let decay_factor = 0.85; // Unselected expert state decay
+        let tau_moe = 0.75f32; // Continuous temperature for smooth softmax routing
+        let decay_factor = 0.85; // Unselected expert state decay floor
 
         for _ in 0..iterations {
             let prev_latent = self.latent_state;
@@ -363,7 +363,7 @@ impl InferenceRunner {
                             &mut self.latent_state,
                             &router.weights,
                             8, // Total experts
-                            top_k,
+                            tau_moe,
                             decay_factor,
                         );
                     }
@@ -375,7 +375,7 @@ impl InferenceRunner {
                             &mut self.latent_state,
                             &router.weights,
                             8,
-                            1, // Dominant specialist + shared base
+                            tau_moe * 0.5, // Sharpened specialist focus + shared base
                             decay_factor,
                         );
                     }

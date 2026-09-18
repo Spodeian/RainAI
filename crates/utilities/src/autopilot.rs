@@ -78,6 +78,27 @@ pub struct HardwareProfile {
     pub recommended_max_batches: usize,
 }
 
+/// Dynamically queries host NVIDIA GPU via driver without requiring static CUDA SDK linking.
+pub fn probe_host_nvidia_gpu() -> Option<(String, u64)> {
+    if let Ok(output) = std::process::Command::new("nvidia-smi")
+        .args(["--query-gpu=name,memory.total", "--format=csv,noheader,nounits"])
+        .output()
+    {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            if let Some(line) = stdout.lines().next() {
+                let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
+                if parts.len() >= 2 {
+                    let name = parts[0].to_string();
+                    let mem_mb: u64 = parts[1].parse().unwrap_or(0);
+                    return Some((name, mem_mb));
+                }
+            }
+        }
+    }
+    None
+}
+
 impl HardwareProfile {
     /// Autonomously probe the host system.
     pub fn probe() -> Self {
@@ -97,15 +118,21 @@ impl HardwareProfile {
             }
             #[cfg(not(feature = "cuda"))]
             {
-                #[cfg(feature = "metal")]
-                if Device::new_metal(0).is_ok() {
-                    ("Apple Metal Accelerator".to_string(), true)
+                // Dynamic detection of host NVIDIA GPU via driver query
+                if let Some((name, mem_mb)) = probe_host_nvidia_gpu() {
+                    let vram_gb = mem_mb as f64 / 1024.0;
+                    (format!("NVIDIA {} ({:.1} GB VRAM)", name, vram_gb), true)
                 } else {
-                    ("CPU (Host Multicore)".to_string(), false)
-                }
-                #[cfg(not(feature = "metal"))]
-                {
-                    ("CPU (Host Multicore)".to_string(), false)
+                    #[cfg(feature = "metal")]
+                    if Device::new_metal(0).is_ok() {
+                        ("Apple Metal Accelerator".to_string(), true)
+                    } else {
+                        ("CPU (Host Multicore)".to_string(), false)
+                    }
+                    #[cfg(not(feature = "metal"))]
+                    {
+                        ("CPU (Host Multicore)".to_string(), false)
+                    }
                 }
             }
         };

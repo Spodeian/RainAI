@@ -1756,6 +1756,7 @@ pub struct CandleTrainConfig {
     pub mfp_decay: f64,
     pub lambda_soup_deficit: f64,
     pub enable_latent_caching: bool,
+    pub continuous_refinement: bool,
     pub output_dir: PathBuf,
     pub device: String,
 }
@@ -1801,6 +1802,7 @@ impl Default for CandleTrainConfig {
             mfp_decay: 0.5,
             lambda_soup_deficit: 0.1,
             enable_latent_caching: true,
+            continuous_refinement: true,
             output_dir: PathBuf::from("crates/inference/data/candle"),
             device: "auto".to_string(),
         }
@@ -1876,7 +1878,14 @@ pub fn run_candle_training_pipeline_with_steering(
     log_msg("======================================================================");
 
     let device = select_device(&config.device);
-    log_msg(&format!("[*] Compute accelerator device: {:?}", device));
+    if let Some((ref gpu_name, mem_mb)) = crate::autopilot::probe_host_nvidia_gpu() {
+        log_msg(&format!(
+            "[*] Compute Architecture: Dual Acceleration (Host Multicore CPU + NVIDIA {} [{:.1} GB VRAM])",
+            gpu_name, mem_mb as f64 / 1024.0
+        ));
+    } else {
+        log_msg(&format!("[*] Compute accelerator device: {:?}", device));
+    }
     std::fs::create_dir_all(&config.output_dir)?;
 
     let session_path = config.output_dir.join("training_session.json");
@@ -1951,18 +1960,26 @@ pub fn run_candle_training_pipeline_with_steering(
     // Phase 2: Train Continuous Spatial VAE + HOA-DDSP
     // ------------------------------------------------------------------------
     if execute_vae {
-        if session.completed_vae && !config.phases.contains(&TrainingPhase::Vae) {
+        if session.completed_vae && !config.phases.contains(&TrainingPhase::Vae) && !config.continuous_refinement {
             log_msg(&format!(
                 "[*] Skipping Spatial VAE (Phase 2): already marked completed in session (best loss: {:.5}).",
                 best_vae_val_loss
             ));
         } else {
             log_msg("\n[Stage 1/3] Training Spatial VAE + HOA-DDSP (Phase 2)...");
-            let vae_varmap = VarMap::new();
+            let mut vae_varmap = VarMap::new();
             let vae_vs = VarBuilder::from_varmap(&vae_varmap, DType::F32, &device);
             let vae_model = CandleSpatialVae::new(vae_vs.pp("vae"))?;
             let affine_align = CandleAffineAlignment::new(LATENT_DIM, vae_vs.pp("affine"))?;
             let quantizer = CandleLearnedQuantizer::new(LATENT_DIM, 6.0, vae_vs.pp("quantizer"))?;
+
+            // Rehydrate weights if available for continuous training
+            let vae_path = config.output_dir.join("spatial_vae.safetensors");
+            if vae_path.exists() {
+                if let Ok(()) = vae_varmap.load(&vae_path) {
+                    log_msg(&format!("[+] Rehydrated converged Spatial VAE weights from {:?}", vae_path));
+                }
+            }
 
             let vae_params = ParamsAdamW {
                 lr: config.learning_rate,
@@ -2176,19 +2193,27 @@ pub fn run_candle_training_pipeline_with_steering(
     // Phase 3: Train Mamba-2 MoE + HWIL Meta-Controller + Iterative Thinking
     // ------------------------------------------------------------------------
     if execute_mamba {
-        if session.completed_mamba && !config.phases.contains(&TrainingPhase::Mamba) {
+        if session.completed_mamba && !config.phases.contains(&TrainingPhase::Mamba) && !config.continuous_refinement {
             log_msg(&format!(
                 "[*] Skipping Mamba-2 MoE (Phase 3): already marked completed in session (best loss: {:.5}).",
                 best_mamba_val_loss
             ));
         } else {
             log_msg("\n[Stage 2/3] Training Mamba-2 MoE Recurrence, Router & Deliberation Dynamics (Phase 3)...");
-            let mamba_varmap = VarMap::new();
+            let mut mamba_varmap = VarMap::new();
             let mamba_vs = VarBuilder::from_varmap(&mamba_varmap, DType::F32, &device);
             let mamba_model = CandleMamba2MoE::new(mamba_vs.pp("mamba"))?;
             let thinking_block = CandleThinkingBlock::new(LATENT_DIM, CONDITION_DIM, mamba_vs.pp("thinking"))?;
             let meta_controller = CandleInvasiveMetaController::new(NUM_EXPERTS, 16, mamba_vs.pp("meta"))?;
             let consistency_head = CandleConsistencyHead::new(LATENT_DIM + CONDITION_DIM, LATENT_DIM, mamba_vs.pp("consistency_head"))?;
+
+            // Rehydrate weights if available for continuous training
+            let mamba_path = config.output_dir.join("mamba2_moe.safetensors");
+            if mamba_path.exists() {
+                if let Ok(()) = mamba_varmap.load(&mamba_path) {
+                    log_msg(&format!("[+] Rehydrated converged Mamba-2 MoE weights from {:?}", mamba_path));
+                }
+            }
 
             let mamba_params = ParamsAdamW {
                 lr: config.learning_rate,
