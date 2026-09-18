@@ -28,10 +28,11 @@ elif command -v python3 &> /dev/null; then
 fi
 
 echo "[*] Using Python environment: $($PYTHON_EXE --version)"
-"$PYTHON_EXE" -X utf8 scripts/export_all.py
+"$PYTHON_EXE" -X utf8 src/export/export_all.py
 
-EXPORT_DIR="$ROOT_DIR/export"
-SLICES_DIR="$EXPORT_DIR/slices"
+# Workspace-anchored export target unified with crates/inference/data
+EXPORT_DIR="$ROOT_DIR/crates/inference/data"
+SLICES_DIR="$EXPORT_DIR/wasm"
 DEPLOY_CONFIG="$EXPORT_DIR/rainai_deployment_config.json"
 
 if [ ! -f "$DEPLOY_CONFIG" ]; then
@@ -72,28 +73,32 @@ rm -rf "$DIST_DIR" dist
 
 export RUSTFLAGS="-C target-feature=+simd128,+bulk-memory,+mutable-globals,+nontrapping-fptoint,+sign-ext,+reference-types,+multivalue -C link-arg=-zstack-size=2097152 ${RUSTFLAGS:-}"
 
-"$TRUNK_BIN" build --release --public-url "/" crates/web/index.html
+"$TRUNK_BIN" build crates/web/index.html --release --public-url "/"
 
 # ==========================================
 # PHASE 3: Asset Synchronization
 # ==========================================
 echo -e "\n--- Stage 3: Synchronizing AI Components to Frontend Runtimes ---"
-INFERENCE_DATA="$ROOT_DIR/crates/inference/data"
+INFERENCE_DATA="$EXPORT_DIR"
 WEB_MODELS="$DIST_DIR/models"
 WEB_SHADERS="$DIST_DIR/shaders"
 WEB_DATA="$DIST_DIR/data"
 
 mkdir -p "$INFERENCE_DATA" "$WEB_MODELS" "$WEB_SHADERS" "$WEB_DATA"
 
-# Sync to local Rust backend
+# Sync deployment config to local inference runtime
 cp -f "$DEPLOY_CONFIG" "$INFERENCE_DATA/rainai_deployment_config.json"
 
-# Sync to Web distribution
-cp -f "$SLICES_DIR"/slice_0_ternary.bin "$WEB_MODELS/" 2>/dev/null || true
-cp -f "$SLICES_DIR"/slice_1_mobile_int4.bin "$WEB_MODELS/" 2>/dev/null || true
-cp -f "$SLICES_DIR"/slice_2_standard_int8.bin "$WEB_MODELS/" 2>/dev/null || true
+# Sync progressive slices and deployment config to Web distribution
+cp -f "$SLICES_DIR"/*.bin "$WEB_MODELS/" 2>/dev/null || true
 cp -f "$DEPLOY_CONFIG" "$WEB_DATA/rainai_deployment_config.json"
-cp -f "$ROOT_DIR/src/dsp/shaders/droplet_panning.wgsl" "$WEB_SHADERS/"
+
+# Sync WebGPU/DSP shaders if present
+if [ -d "$ROOT_DIR/crates/inference/src/shaders" ]; then
+    cp -f "$ROOT_DIR"/crates/inference/src/shaders/*.wgsl "$WEB_SHADERS/" 2>/dev/null || true
+elif [ -d "$ROOT_DIR/src/dsp/shaders" ]; then
+    cp -f "$ROOT_DIR/src/dsp/shaders/"*.wgsl "$WEB_SHADERS/" 2>/dev/null || true
+fi
 
 # ==========================================
 # PHASE 4: Optimization & Compression
@@ -119,7 +124,6 @@ if [ -f "$DIST_DIR/sw.js" ]; then
     sed -i "s/CACHE_NAME = '.*'/CACHE_NAME = 'serverless-desktop-template-cache-${BUILD_ID}'/g" "$DIST_DIR/sw.js" 2>/dev/null || true
 fi
 
-# Fallback python minification (abbreviated for script readability, utilizes existing node/python logic)
 if command -v npx &> /dev/null; then
     for js_file in "$DIST_DIR"/*.js; do npx --yes esbuild "$js_file" --minify --allow-overwrite --outfile="$js_file" || true; done
     for css_file in "$DIST_DIR"/*.css; do npx --yes esbuild "$css_file" --minify --allow-overwrite --outfile="$css_file" || true; done
@@ -142,10 +146,9 @@ else
     echo "Pages / Static CDN deployment context detected. Build ready for publishing."
 fi
 
-# Optional Benchmarks
 if [ "${RUN_BENCHMARKS:-false}" = "true" ]; then
     echo -e "\n--- Stage 6: Benchmarking Multi-Backend Inference Performance ---"
-    "$PYTHON_EXE" -X utf8 scripts/benchmark_backends.py --iterations 50
+    "$PYTHON_EXE" -X utf8 src/benchmarks/benchmark_backends.py --iterations 50
 fi
 
 echo -e "\n[+] Deployment Build Completed Successfully!"

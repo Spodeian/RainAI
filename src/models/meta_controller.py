@@ -111,7 +111,12 @@ class InvasiveMetaController(nn.Module):
             slice_norm = torch.full((batch_size, 1), float(active_slice_level) / 4.0, device=device)
         else:
             slice_norm = (active_slice_level.float() / 4.0).clamp(0.0, 1.0)
-            if slice_norm.dim() == 1:
+            
+            # Catch 0-D scalar tensors and broadcast to batch size
+            if slice_norm.dim() == 0:
+                slice_norm = slice_norm.view(1, 1).expand(batch_size, 1)
+            # Catch 1-D tensors and append the feature dimension
+            elif slice_norm.dim() == 1:
                 slice_norm = slice_norm.unsqueeze(-1)
             
         # Normalize inputs into stable dynamic range

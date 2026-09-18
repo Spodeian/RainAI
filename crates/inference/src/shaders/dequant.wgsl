@@ -1,11 +1,12 @@
-@group(0) @binding(0) var<storage, read> packed_weights: array<u32>;
-@group(0) @binding(1) var<storage, read_write> expanded_f32: array<f32>;
-
-struct PushConstants {
+struct DequantParams {
     total_elements: u32,
     gamma: f32,
+    padding: vec2<u32>,
 }
-var<push_constant> params: PushConstants;
+
+@group(0) @binding(0) var<storage, read> packed_weights: array<u32>;
+@group(0) @binding(1) var<storage, read_write> expanded_f32: array<f32>;
+@group(0) @binding(2) var<uniform> params: DequantParams;
 
 @compute @workgroup_size(256)
 fn dequantize_ternary_2bit(@builtin(global_invocation_id) global_id: vec3<u32>) {

@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>RainAI · Neural Spatial Soundscape Studio</title>
 
     <!-- Primary SEO Metadata -->
@@ -42,6 +42,13 @@
     <link data-trunk rel="copy-file" href="_redirects">
     <link data-trunk rel="copy-file" href="sw.js">
     <link data-trunk rel="copy-file" href="manifest.json">
+
+    <!-- Direct Trunk asset fetching from inference crate data (single source of truth) -->
+    <link data-trunk rel="copy-dir" href="../inference/data/candle" data-target-path="models">
+    <link data-trunk rel="copy-dir" href="../inference/data/onnx" data-target-path="models/onnx">
+    <link data-trunk rel="copy-dir" href="../inference/data/wasm" data-target-path="data">
+    <link data-trunk rel="copy-file" href="../inference/data/rainai_deployment_config.json" data-target-path="data">
+    <link data-trunk rel="copy-dir" href="../inference/src/shaders" data-target-path="shaders">
 
     <!-- CSS and JavaScript Assets Managed by Trunk -->
     <link data-trunk rel="scss" href="index.scss" data-integrity="none">

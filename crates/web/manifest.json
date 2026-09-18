@@ -1,7 +1,7 @@
 {
-  "name": "Serverless & Desktop Template",
-  "short_name": "AppTemplate",
-  "description": "Production-ready Serverless (WASM / Cloudflare Pages / PWA) & Native Desktop template in Rust with egui.",
+  "name": "RainAI · Neural Spatial Soundscape Studio",
+  "short_name": "RainAI",
+  "description": "Continuous procedural neural spatial rain synthesis conditioned on 554 physical parameters in Rust, WebGPU, and WebAssembly.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

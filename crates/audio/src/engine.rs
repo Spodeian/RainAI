@@ -4,8 +4,11 @@
 //! integration on WebAssembly, with lock-free state synchronization from the UI thread.
 
 use crate::decoder::{AmbisonicDecoder, DecodeMode};
+use crate::history::AcousticHistoryBuffer;
+use crate::meta_governor::{LivePreferenceMediator, MetaGovernor};
+use crate::physical::PhysicalRainSynthesizer;
 use crate::procedural::ProceduralSynthesizer;
-use shared::rain::{EngineTelemetry, RainState};
+use shared::rain::{EngineTelemetry, MetaControllerInterceptionMode, RainState, SynthesisMode};
 use std::sync::{Arc, RwLock};
 use thiserror::Error;
 
@@ -43,6 +46,21 @@ impl AudioRingBuffer {
     }
 
     #[inline]
+    pub fn capacity_frames(&self) -> usize {
+        self.capacity_frames
+    }
+
+    #[inline]
+    pub fn size_in_bytes(&self) -> usize {
+        self.capacity_frames * 2 * std::mem::size_of::<f32>()
+    }
+
+    #[inline]
+    pub fn dynamic_bytes_used(&self) -> usize {
+        self.available_frames * 2 * std::mem::size_of::<f32>()
+    }
+
+    #[inline]
     pub fn available_frames(&self) -> usize {
         self.available_frames
     }
@@ -50,6 +68,37 @@ impl AudioRingBuffer {
     #[inline]
     pub fn free_frames(&self) -> usize {
         self.capacity_frames.saturating_sub(self.available_frames)
+    }
+
+    /// Dynamically resizes the ring buffer capacity relative to target performance
+    /// while preserving existing audio samples without clicks.
+    pub fn resize_relative_to_performance(&mut self, new_capacity: usize) {
+        if new_capacity == self.capacity_frames || new_capacity == 0 {
+            return;
+        }
+        let mut new_buf = vec![0.0f32; new_capacity * 2];
+        let frames_to_copy = self.available_frames.min(new_capacity);
+        for i in 0..frames_to_copy {
+            let src_idx = ((self.read_pos + i) % self.capacity_frames) * 2;
+            let dst_idx = i * 2;
+            new_buf[dst_idx] = self.buffer[src_idx];
+            new_buf[dst_idx + 1] = self.buffer[src_idx + 1];
+        }
+        self.buffer = new_buf;
+        self.capacity_frames = new_capacity;
+        self.read_pos = 0;
+        self.write_pos = frames_to_copy % new_capacity;
+        self.available_frames = frames_to_copy;
+    }
+
+    /// Evaluates buffer health relative to target capacity in frames
+    #[inline]
+    pub fn relative_health_ratio(&self, target_capacity_frames: usize) -> f32 {
+        if target_capacity_frames == 0 {
+            1.0
+        } else {
+            (self.available_frames as f32 / target_capacity_frames as f32).clamp(0.0, 2.0)
+        }
     }
 
     #[inline]
@@ -96,6 +145,65 @@ pub fn soft_limit(sample: f32) -> f32 {
     }
 }
 
+/// Dynamic crest factor compressor and envelope follower.
+/// Prevents transient harshness during heavy downpours while preserving
+/// delicate micro-droplet impact clarity through adaptive soft-knee gain reduction.
+#[derive(Debug, Clone)]
+pub struct CrestFactorGovernor {
+    peak_env: f32,
+    rms_env: f32,
+    gain: f32,
+    attack_coeff: f32,
+    release_coeff: f32,
+}
+
+impl CrestFactorGovernor {
+    pub fn new(sample_rate: f32) -> Self {
+        let sr = sample_rate.max(1.0);
+        let attack_coeff = (-1.0 / (0.005 * sr)).exp();
+        let release_coeff = (-1.0 / (0.080 * sr)).exp();
+        Self {
+            peak_env: 0.0,
+            rms_env: 0.0,
+            gain: 1.0,
+            attack_coeff,
+            release_coeff,
+        }
+    }
+
+    #[inline]
+    pub fn process(&mut self, left: f32, right: f32) -> (f32, f32) {
+        let max_abs = left.abs().max(right.abs());
+        let sq = (left * left + right * right) * 0.5;
+
+        if max_abs > self.peak_env {
+            self.peak_env = max_abs;
+        } else {
+            self.peak_env = self.peak_env * self.release_coeff + max_abs * (1.0 - self.release_coeff);
+        }
+
+        self.rms_env = self.rms_env * self.release_coeff + sq * (1.0 - self.release_coeff);
+        let rms = self.rms_env.sqrt().max(1e-5);
+        let crest_factor = self.peak_env / rms;
+
+        let target_gain = if crest_factor > 4.5 {
+            (4.5 / crest_factor).powf(0.5)
+        } else if self.peak_env > 0.85 {
+            0.85 / self.peak_env
+        } else {
+            1.0
+        };
+
+        if target_gain < self.gain {
+            self.gain = self.gain * self.attack_coeff + target_gain * (1.0 - self.attack_coeff);
+        } else {
+            self.gain = self.gain * self.release_coeff + target_gain * (1.0 - self.release_coeff);
+        }
+
+        (left * self.gain, right * self.gain)
+    }
+}
+
 /// Shared thread-safe state container between UI thread and Audio thread
 #[derive(Clone, Debug)]
 pub struct SharedAudioState {
@@ -104,6 +212,7 @@ pub struct SharedAudioState {
     pub orientation: Arc<RwLock<[f32; 3]>>,
     pub telemetry: Arc<RwLock<EngineTelemetry>>,
     pub ring_buffer: Arc<RwLock<AudioRingBuffer>>,
+    pub history: Arc<RwLock<AcousticHistoryBuffer>>,
 }
 
 impl Default for SharedAudioState {
@@ -114,6 +223,7 @@ impl Default for SharedAudioState {
             orientation: Arc::new(RwLock::new([0.0, 0.0, 0.0])),
             telemetry: Arc::new(RwLock::new(EngineTelemetry::default())),
             ring_buffer: Arc::new(RwLock::new(AudioRingBuffer::new(12000))),
+            history: Arc::new(RwLock::new(AcousticHistoryBuffer::new(30.0, 48000.0))),
         }
     }
 }
@@ -127,6 +237,7 @@ impl SharedAudioState {
             orientation: Arc::new(RwLock::new([0.0, 0.0, 0.0])),
             telemetry,
             ring_buffer: Arc::new(RwLock::new(AudioRingBuffer::new(12000))),
+            history: Arc::new(RwLock::new(AcousticHistoryBuffer::new(30.0, 48000.0))),
         }
     }
 
@@ -141,7 +252,7 @@ impl SharedAudioState {
     }
 
     pub fn update_telemetry(&self, telemetry: &EngineTelemetry) {
-        if let Ok(mut lock) = self.telemetry.write() {
+        if let Ok(mut lock) = self.telemetry.try_write() {
             *lock = telemetry.clone();
         }
     }
@@ -192,17 +303,23 @@ impl DesktopAudioEngine {
         let channels = supported_config.channels() as usize;
 
         let quality_tier = initial_state.quality_tier;
+        let cached_rain = initial_state.clone();
         let state = SharedAudioState::new(initial_state, mode);
         let audio_state = state.clone();
 
         let mut synth = ProceduralSynthesizer::new(sample_rate);
+        let mut physical_synth = PhysicalRainSynthesizer::new(sample_rate);
         
         // Load embedded ternary weights by default to avoid blocking audio thread on initialization
         let weight_cache = inference::weight_loader::WeightLoader::load_embedded_ternary().unwrap_or_default();
         let mut runner = inference::runner::InferenceRunner::new(quality_tier, weight_cache);
         
         let mut decoder = AmbisonicDecoder::new(mode);
-        let mut governor = crate::meta_governor::MetaGovernor::new();
+        let mut governor = MetaGovernor::new();
+        let mut mediator = LivePreferenceMediator::new();
+        let mut crest_governor = CrestFactorGovernor::new(sample_rate);
+        let mut cached_rain = cached_rain;
+        let mut rb = AudioRingBuffer::new(12000);
 
         let err_fn = |err| tracing::error!("An error occurred on the audio stream: {err}");
 
@@ -214,18 +331,25 @@ impl DesktopAudioEngine {
                         let dt = (data.len() / channels.max(1)) as f32 / sample_rate.max(1.0);
                         let frames_needed = data.len() / channels.max(1);
 
-                        let mut rain = if let Ok(guard) = audio_state.rain.read() {
-                            guard.clone()
-                        } else {
-                            RainState::default()
-                        };
+                        // Wait-free synchronization: try_read avoids blocking the real-time audio thread
+                        if let Ok(guard) = audio_state.rain.try_read() {
+                            cached_rain = guard.clone();
+                        }
+                        let mut rain = cached_rain.clone();
 
-                        if let Ok(dm) = audio_state.decode_mode.read() {
+                        if let Ok(dm) = audio_state.decode_mode.try_read() {
                             decoder.mode = *dm;
                         }
-                        if let Ok(ori) = audio_state.orientation.read() {
+                        if let Ok(ori) = audio_state.orientation.try_read() {
                             decoder.set_orientation(ori[0], ori[1], ori[2]);
                         }
+
+                        // Mediate live preferences with physical momentum
+                        let mediated_rain = if rain.meta_mediation_mode == MetaControllerInterceptionMode::MediatedLive {
+                            mediator.mediate_step(&rain, dt)
+                        } else {
+                            rain.clone()
+                        };
 
                         // Evaluate autonomous governor with active optimization and stress profiles
                         let action = governor.evaluate(
@@ -234,6 +358,8 @@ impl DesktopAudioEngine {
                             rain.auto_quantize,
                             rain.optimization_profile,
                             rain.stress_profile,
+                            rain.meta_mediation_mode,
+                            rain.user_thinking_steps,
                             dt,
                         );
                         rain.telemetry.effective_quant_floor = action.min_bits;
@@ -250,107 +376,162 @@ impl DesktopAudioEngine {
                         rain.telemetry.panic_factor = action.simulated_panic_factor;
                         rain.telemetry.jitter_factor = action.simulated_jitter_factor;
                         rain.telemetry.cpu_headroom = action.simulated_cpu_headroom;
+                        rain.telemetry.dynamic_buffer_bytes = action.dynamic_buffer_bytes;
+                        rain.telemetry.env_max_buffer_bytes = action.env_max_buffer_bytes;
+                        rain.telemetry.buffer_capacity_ms = (rb.capacity_frames() as f32 / sample_rate.max(1.0)) * 1000.0;
+                        rain.telemetry.buffer_resize_cooldown = action.buffer_resize_cooldown;
+                        rain.telemetry.quant_macro_cooldown = action.quant_macro_cooldown;
+                        rain.telemetry.buffer_resizes_count = action.buffer_resizes_count;
+                        rain.telemetry.quant_swaps_count = action.quant_swaps_count;
+                        rain.telemetry.user_thinking_steps_override = rain.user_thinking_steps.is_some();
+                        rain.telemetry.is_offline_export_mode = rain.meta_mediation_mode == MetaControllerInterceptionMode::OfflineMaxQuality;
+
+                        if rain.auto_quantize && rain.user_thinking_steps.is_none() {
+                            rain.thinking_steps = action.thinking_steps;
+                            rain.use_consistency_jump = action.use_consistency_jump;
+                        } else if let Some(steps) = rain.user_thinking_steps {
+                            rain.thinking_steps = steps;
+                        }
+                        rain.telemetry.thinking_steps = rain.thinking_steps;
+                        rain.telemetry.consistency_jump_active = rain.use_consistency_jump && runner.has_consistency_jump_head();
 
                         let target_headroom_frames = ((action.target_buffer_ms / 1000.0) * sample_rate) as usize;
 
-                        if let Ok(mut rb) = audio_state.ring_buffer.write() {
-                            // 1. Generation: pre-buffer ahead up to target headroom even when paused!
-                            let frames_to_generate = if rb.available_frames() < target_headroom_frames {
-                                (target_headroom_frames - rb.available_frames()).min(frames_needed.max(256) * 4)
-                            } else {
-                                0
-                            };
+                        // Autonomous dynamic buffer resizing commanded by MetaGovernor
+                        if action.resize_commanded {
+                            rb.resize_relative_to_performance(action.target_capacity_frames);
+                            rain.telemetry.buffer_capacity_ms = (rb.capacity_frames() as f32 / sample_rate.max(1.0)) * 1000.0;
+                        }
 
-                            if frames_to_generate > 0 {
-                                runner.set_target_tier(rain.quality_tier);
-                                runner.set_active_experts(action.active_experts);
-                                runner.set_diffusion_bypass(action.diffusion_bypass);
-                                runner.update_quantization_bounds(action.min_bits, action.max_bits);
+                        // 1. Generation: pre-buffer ahead up to target headroom even when paused!
+                        let frames_to_generate = if rb.available_frames() < target_headroom_frames {
+                            (target_headroom_frames - rb.available_frames()).min(frames_needed.max(256) * 4)
+                        } else {
+                            0
+                        };
 
-                                // Condition synthesis as active to prime the buffer
-                                let mut synth_state = rain.clone();
-                                synth_state.is_playing = true;
-                                let blend = action.synthesis_blend;
+                        if frames_to_generate > 0 {
+                            runner.set_target_tier(rain.quality_tier);
+                            runner.set_active_experts(action.active_experts);
+                            runner.set_moe_mode(action.recommended_moe_mode);
+                            runner.set_diffusion_bypass(action.diffusion_bypass);
+                            runner.update_quantization_bounds(action.min_bits, action.max_bits);
+                            runner.set_thinking_steps(rain.thinking_steps);
+                            runner.set_use_consistency_jump(rain.use_consistency_jump);
 
-                                for _ in 0..frames_to_generate {
-                                    let foa_proc = synth.process_frame(&synth_state);
+                            // Condition synthesis as active to prime the buffer
+                            let mut synth_state = mediated_rain.clone();
+                            synth_state.is_playing = true;
+                            let blend = action.synthesis_blend;
+                            let cond = synth_state.to_conditioning_array();
 
-                                    let foa = if blend >= 0.999 {
-                                        foa_proc
-                                    } else {
-                                        let cond = synth_state.to_conditioning_array();
-                                        let (nw, nx, ny, nz) = runner.step(&cond);
-                                        let foa_neural = crate::decoder::FoaFrame::new(nw, nx, ny, nz);
+                            for _ in 0..frames_to_generate {
+                                let foa_proc = synth.process_frame(&synth_state);
 
-                                        crate::decoder::FoaFrame::new(
-                                            foa_proc.w * blend + foa_neural.w * (1.0 - blend),
-                                            foa_proc.x * blend + foa_neural.x * (1.0 - blend),
-                                            foa_proc.y * blend + foa_neural.y * (1.0 - blend),
-                                            foa_proc.z * blend + foa_neural.z * (1.0 - blend),
-                                        )
-                                    };
+                                let foa = match rain.synthesis_mode {
+                                    SynthesisMode::PhysicalSynth => physical_synth.process_frame(&synth_state),
+                                    SynthesisMode::ProceduralFilterbank => foa_proc,
+                                    SynthesisMode::NeuralAi => {
+                                        let (nw, nx, ny, nz) = if runner.use_consistency_jump && runner.has_consistency_jump_head() {
+                                            runner.fast_consistency_step(&cond)
+                                        } else {
+                                            runner.step(&cond)
+                                        };
+                                        crate::decoder::FoaFrame::new(nw, nx, ny, nz)
+                                    }
+                                    SynthesisMode::HybridAdaptive => {
+                                        if blend >= 0.999 {
+                                            foa_proc
+                                        } else {
+                                            let (nw, nx, ny, nz) = if runner.use_consistency_jump && runner.has_consistency_jump_head() {
+                                                runner.fast_consistency_step(&cond)
+                                            } else {
+                                                runner.step(&cond)
+                                            };
+                                            let foa_neural = crate::decoder::FoaFrame::new(nw, nx, ny, nz);
 
-                                    let stereo = if action.ambisonic_order_reduced {
-                                        // Shed ambisonic order to lightweight stereo pass-through
-                                        crate::decoder::StereoFrame {
-                                            left: foa.w * 0.707 + foa.y * 0.5,
-                                            right: foa.w * 0.707 - foa.y * 0.5,
+                                            crate::decoder::FoaFrame::new(
+                                                foa_proc.w * blend + foa_neural.w * (1.0 - blend),
+                                                foa_proc.x * blend + foa_neural.x * (1.0 - blend),
+                                                foa_proc.y * blend + foa_neural.y * (1.0 - blend),
+                                                foa_proc.z * blend + foa_neural.z * (1.0 - blend),
+                                            )
                                         }
-                                    } else {
-                                        decoder.decode_stereo(foa)
-                                    };
+                                    }
+                                };
 
-                                    let limited_l = soft_limit(stereo.left);
-                                    let limited_r = soft_limit(stereo.right);
-                                    if !rb.push_frame(limited_l, limited_r) {
-                                        break;
+                                // Record into AcousticHistoryBuffer if recording is enabled
+                                if rain.history_recording_enabled {
+                                    if let Ok(mut hist) = audio_state.history.try_write() {
+                                        hist.record_frame(&cond, foa);
+                                    }
+                                }
+
+                                let stereo = if action.ambisonic_order_reduced {
+                                    // Shed ambisonic order to lightweight stereo pass-through
+                                    crate::decoder::StereoFrame {
+                                        left: foa.w * 0.707 + foa.y * 0.5,
+                                        right: foa.w * 0.707 - foa.y * 0.5,
+                                    }
+                                } else {
+                                    decoder.decode_stereo(foa)
+                                };
+
+                                let (crest_l, crest_r) = crest_governor.process(stereo.left, stereo.right);
+                                let limited_l = soft_limit(crest_l);
+                                let limited_r = soft_limit(crest_r);
+                                if !rb.push_frame(limited_l, limited_r) {
+                                    break;
+                                }
+                            }
+                        }
+
+                        let current_available = rb.available_frames();
+                        let buffer_ms = (current_available as f32 / sample_rate) * 1000.0;
+                        rain.telemetry.buffer_health_ms = buffer_ms;
+                        rain.telemetry.buffer_health_ratio = rb.relative_health_ratio(target_headroom_frames);
+                        if let Ok(hist) = audio_state.history.try_read() {
+                            rain.telemetry.history_seconds_available = hist.available_seconds();
+                        }
+
+                        // 2. Playback consumption
+                        if rain.is_playing {
+                            rain.telemetry.is_prebuffered = false;
+                            for frame_chunk in data.chunks_mut(channels) {
+                                if let Some((l, r)) = rb.pop_frame() {
+                                    let out_l = soft_limit(l * rain.master_volume);
+                                    let out_r = soft_limit(r * rain.master_volume);
+                                    if channels >= 2 {
+                                        frame_chunk[0] = out_l;
+                                        frame_chunk[1] = out_r;
+                                        for extra in &mut frame_chunk[2..] {
+                                            *extra = 0.0;
+                                        }
+                                    } else if channels == 1 {
+                                        frame_chunk[0] = (out_l + out_r) * 0.5;
+                                    }
+                                } else {
+                                    for s in frame_chunk.iter_mut() {
+                                        *s = 0.0;
                                     }
                                 }
                             }
+                        } else {
+                            // Paused: output silence to hardware
+                            for s in data.iter_mut() {
+                                *s = 0.0;
+                            }
 
-                            let current_available = rb.available_frames();
-                            let buffer_ms = (current_available as f32 / sample_rate) * 1000.0;
-                            rain.telemetry.buffer_health_ms = buffer_ms;
-
-                            // 2. Playback consumption
-                            if rain.is_playing {
-                                rain.telemetry.is_prebuffered = false;
-                                for frame_chunk in data.chunks_mut(channels) {
-                                    if let Some((l, r)) = rb.pop_frame() {
-                                        let out_l = soft_limit(l * rain.master_volume);
-                                        let out_r = soft_limit(r * rain.master_volume);
-                                        if channels >= 2 {
-                                            frame_chunk[0] = out_l;
-                                            frame_chunk[1] = out_r;
-                                            for extra in &mut frame_chunk[2..] {
-                                                *extra = 0.0;
-                                            }
-                                        } else if channels == 1 {
-                                            frame_chunk[0] = (out_l + out_r) * 0.5;
-                                        }
-                                    } else {
-                                        for s in frame_chunk.iter_mut() {
-                                            *s = 0.0;
-                                        }
-                                    }
-                                }
+                            if current_available >= target_headroom_frames.saturating_sub(64) {
+                                rain.telemetry.is_prebuffered = true;
+                                rain.telemetry.governor_status = "Pre-Buffered & Ready (Happy)".into();
                             } else {
-                                // Paused: output silence to hardware
-                                for s in data.iter_mut() {
-                                    *s = 0.0;
-                                }
-
-                                if current_available >= target_headroom_frames.saturating_sub(64) {
-                                    rain.telemetry.is_prebuffered = true;
-                                    rain.telemetry.governor_status = "Pre-Buffered & Ready (Happy)".into();
-                                } else {
-                                    rain.telemetry.is_prebuffered = false;
-                                    rain.telemetry.governor_status = format!(
-                                        "Pre-Buffering... ({:.0}ms / {:.0}ms)",
-                                        buffer_ms,
-                                        action.target_buffer_ms
-                                    );
-                                }
+                                rain.telemetry.is_prebuffered = false;
+                                rain.telemetry.governor_status = format!(
+                                    "Pre-Buffering... ({:.0}ms / {:.0}ms)",
+                                    buffer_ms,
+                                    action.target_buffer_ms
+                                );
                             }
                         }
 
@@ -400,6 +581,7 @@ impl WebAudioEngine {
 
         let sample_rate = ctx.sample_rate();
         let quality_tier = initial_state.quality_tier;
+        let cached_rain = initial_state.clone();
         let state = SharedAudioState::new(initial_state, mode);
 
         let processor = ctx
@@ -410,12 +592,17 @@ impl WebAudioEngine {
 
         let audio_state = state.clone();
         let mut synth = ProceduralSynthesizer::new(sample_rate);
+        let mut physical_synth = PhysicalRainSynthesizer::new(sample_rate);
         
         let weight_cache = inference::weight_loader::WeightLoader::load_embedded_ternary().unwrap_or_default();
         let mut runner = inference::runner::InferenceRunner::new(quality_tier, weight_cache);
         
         let mut decoder = AmbisonicDecoder::new(mode);
-        let mut governor = crate::meta_governor::MetaGovernor::new();
+        let mut governor = MetaGovernor::new();
+        let mut mediator = LivePreferenceMediator::new();
+        let mut crest_governor = CrestFactorGovernor::new(sample_rate);
+        let mut cached_rain = cached_rain;
+        let mut rb = AudioRingBuffer::new(12000);
         let mut left_out = vec![0.0f32; 2048];
         let mut right_out = vec![0.0f32; 2048];
 
@@ -433,18 +620,25 @@ impl WebAudioEngine {
 
             let dt = frames_needed as f32 / sample_rate.max(1.0);
 
-            let mut rain = if let Ok(guard) = audio_state.rain.read() {
-                guard.clone()
-            } else {
-                return;
-            };
+            // Wait-free synchronization: try_read avoids blocking the real-time audio thread
+            if let Ok(guard) = audio_state.rain.try_read() {
+                cached_rain = guard.clone();
+            }
+            let mut rain = cached_rain.clone();
 
-            if let Ok(dm) = audio_state.decode_mode.read() {
+            if let Ok(dm) = audio_state.decode_mode.try_read() {
                 decoder.mode = *dm;
             }
-            if let Ok(ori) = audio_state.orientation.read() {
+            if let Ok(ori) = audio_state.orientation.try_read() {
                 decoder.set_orientation(ori[0], ori[1], ori[2]);
             }
+
+            // Mediate live preferences with physical momentum
+            let mediated_rain = if rain.meta_mediation_mode == MetaControllerInterceptionMode::MediatedLive {
+                mediator.mediate_step(&rain, dt)
+            } else {
+                rain.clone()
+            };
 
             let action = governor.evaluate(
                 &rain.telemetry,
@@ -452,6 +646,8 @@ impl WebAudioEngine {
                 rain.auto_quantize,
                 rain.optimization_profile,
                 rain.stress_profile,
+                rain.meta_mediation_mode,
+                rain.user_thinking_steps,
                 dt,
             );
 
@@ -469,93 +665,149 @@ impl WebAudioEngine {
             rain.telemetry.panic_factor = action.simulated_panic_factor;
             rain.telemetry.jitter_factor = action.simulated_jitter_factor;
             rain.telemetry.cpu_headroom = action.simulated_cpu_headroom;
+            rain.telemetry.dynamic_buffer_bytes = action.dynamic_buffer_bytes;
+            rain.telemetry.env_max_buffer_bytes = action.env_max_buffer_bytes;
+            rain.telemetry.buffer_capacity_ms = (rb.capacity_frames() as f32 / sample_rate.max(1.0)) * 1000.0;
+            rain.telemetry.buffer_resize_cooldown = action.buffer_resize_cooldown;
+            rain.telemetry.quant_macro_cooldown = action.quant_macro_cooldown;
+            rain.telemetry.buffer_resizes_count = action.buffer_resizes_count;
+            rain.telemetry.quant_swaps_count = action.quant_swaps_count;
+            rain.telemetry.user_thinking_steps_override = rain.user_thinking_steps.is_some();
+            rain.telemetry.is_offline_export_mode = rain.meta_mediation_mode == MetaControllerInterceptionMode::OfflineMaxQuality;
+
+            if rain.auto_quantize && rain.user_thinking_steps.is_none() {
+                rain.thinking_steps = action.thinking_steps;
+                rain.use_consistency_jump = action.use_consistency_jump;
+            } else if let Some(steps) = rain.user_thinking_steps {
+                rain.thinking_steps = steps;
+            }
+            rain.telemetry.thinking_steps = rain.thinking_steps;
+            rain.telemetry.consistency_jump_active = rain.use_consistency_jump && runner.has_consistency_jump_head();
 
             let target_headroom_frames = ((action.target_buffer_ms / 1000.0) * sample_rate) as usize;
 
-            if let Ok(mut rb) = audio_state.ring_buffer.write() {
-                let frames_to_generate = if rb.available_frames() < target_headroom_frames {
-                    (target_headroom_frames - rb.available_frames()).min(frames_needed.max(256) * 4)
-                } else {
-                    0
-                };
+            // Autonomous dynamic buffer resizing commanded by MetaGovernor
+            if action.resize_commanded {
+                rb.resize_relative_to_performance(action.target_capacity_frames);
+                rain.telemetry.buffer_capacity_ms = (rb.capacity_frames() as f32 / sample_rate.max(1.0)) * 1000.0;
+            }
 
-                if frames_to_generate > 0 {
-                    runner.set_target_tier(rain.quality_tier);
-                    runner.set_active_experts(action.active_experts);
-                    runner.set_diffusion_bypass(action.diffusion_bypass);
-                    runner.update_quantization_bounds(action.min_bits, action.max_bits);
+            // Incremental headroom budgeting: clamp generation to frames_needed + 128 to prevent main thread spikes
+            let max_batch = frames_needed + 128;
+            let frames_to_generate = if rb.available_frames() < target_headroom_frames {
+                (target_headroom_frames - rb.available_frames()).min(max_batch)
+            } else {
+                0
+            };
 
-                    let mut synth_state = rain.clone();
-                    synth_state.is_playing = true;
-                    let blend = action.synthesis_blend;
+            if frames_to_generate > 0 {
+                runner.set_target_tier(rain.quality_tier);
+                runner.set_active_experts(action.active_experts);
+                runner.set_diffusion_bypass(action.diffusion_bypass);
+                runner.update_quantization_bounds(action.min_bits, action.max_bits);
+                runner.set_thinking_steps(rain.thinking_steps);
+                runner.set_use_consistency_jump(rain.use_consistency_jump);
 
-                    for _ in 0..frames_to_generate {
-                        let foa_proc = synth.process_frame(&synth_state);
+                let mut synth_state = mediated_rain.clone();
+                synth_state.is_playing = true;
+                let blend = action.synthesis_blend;
+                let cond = synth_state.to_conditioning_array();
 
-                        let foa = if blend >= 0.999 {
-                            foa_proc
-                        } else {
-                            let cond = synth_state.to_conditioning_array();
-                            let (nw, nx, ny, nz) = runner.step(&cond);
-                            let foa_neural = crate::decoder::FoaFrame::new(nw, nx, ny, nz);
+                for _ in 0..frames_to_generate {
+                    let foa_proc = synth.process_frame(&synth_state);
 
-                            crate::decoder::FoaFrame::new(
-                                foa_proc.w * blend + foa_neural.w * (1.0 - blend),
-                                foa_proc.x * blend + foa_neural.x * (1.0 - blend),
-                                foa_proc.y * blend + foa_neural.y * (1.0 - blend),
-                                foa_proc.z * blend + foa_neural.z * (1.0 - blend),
-                            )
-                        };
-
-                        let stereo = if action.ambisonic_order_reduced {
-                            crate::decoder::StereoFrame {
-                                left: foa.w * 0.707 + foa.y * 0.5,
-                                right: foa.w * 0.707 - foa.y * 0.5,
-                            }
-                        } else {
-                            decoder.decode_stereo(foa)
-                        };
-
-                        let limited_l = soft_limit(stereo.left);
-                        let limited_r = soft_limit(stereo.right);
-                        if !rb.push_frame(limited_l, limited_r) {
-                            break;
+                    let foa = match rain.synthesis_mode {
+                        SynthesisMode::PhysicalSynth => physical_synth.process_frame(&synth_state),
+                        SynthesisMode::ProceduralFilterbank => foa_proc,
+                        SynthesisMode::NeuralAi => {
+                            let (nw, nx, ny, nz) = if runner.use_consistency_jump && runner.has_consistency_jump_head() {
+                                runner.fast_consistency_step(&cond)
+                            } else {
+                                runner.step(&cond)
+                            };
+                            crate::decoder::FoaFrame::new(nw, nx, ny, nz)
                         }
+                        SynthesisMode::HybridAdaptive => {
+                            if blend >= 0.999 {
+                                foa_proc
+                            } else {
+                                let (nw, nx, ny, nz) = if runner.use_consistency_jump && runner.has_consistency_jump_head() {
+                                    runner.fast_consistency_step(&cond)
+                                } else {
+                                    runner.step(&cond)
+                                };
+                                let foa_neural = crate::decoder::FoaFrame::new(nw, nx, ny, nz);
+
+                                crate::decoder::FoaFrame::new(
+                                    foa_proc.w * blend + foa_neural.w * (1.0 - blend),
+                                    foa_proc.x * blend + foa_neural.x * (1.0 - blend),
+                                    foa_proc.y * blend + foa_neural.y * (1.0 - blend),
+                                    foa_proc.z * blend + foa_neural.z * (1.0 - blend),
+                                )
+                            }
+                        }
+                    };
+
+                    // Record into AcousticHistoryBuffer if recording is enabled
+                    if rain.history_recording_enabled {
+                        if let Ok(mut hist) = audio_state.history.try_write() {
+                            hist.record_frame(&cond, foa);
+                        }
+                    }
+
+                    let stereo = if action.ambisonic_order_reduced {
+                        crate::decoder::StereoFrame {
+                            left: foa.w * 0.707 + foa.y * 0.5,
+                            right: foa.w * 0.707 - foa.y * 0.5,
+                        }
+                    } else {
+                        decoder.decode_stereo(foa)
+                    };
+
+                    let (crest_l, crest_r) = crest_governor.process(stereo.left, stereo.right);
+                    let limited_l = soft_limit(crest_l);
+                    let limited_r = soft_limit(crest_r);
+                    if !rb.push_frame(limited_l, limited_r) {
+                        break;
                     }
                 }
+            }
 
-                let current_available = rb.available_frames();
-                let buffer_ms = (current_available as f32 / sample_rate) * 1000.0;
-                rain.telemetry.buffer_health_ms = buffer_ms;
+            let current_available = rb.available_frames();
+            let buffer_ms = (current_available as f32 / sample_rate) * 1000.0;
+            rain.telemetry.buffer_health_ms = buffer_ms;
+            rain.telemetry.buffer_health_ratio = rb.relative_health_ratio(target_headroom_frames);
+            if let Ok(hist) = audio_state.history.try_read() {
+                rain.telemetry.history_seconds_available = hist.available_seconds();
+            }
 
-                if rain.is_playing {
-                    rain.telemetry.is_prebuffered = false;
-                    for i in 0..frames_needed {
-                        if let Some((l, r)) = rb.pop_frame() {
-                            left_out[i] = soft_limit(l * rain.master_volume);
-                            right_out[i] = soft_limit(r * rain.master_volume);
-                        } else {
-                            left_out[i] = 0.0;
-                            right_out[i] = 0.0;
-                        }
-                    }
-                } else {
-                    for i in 0..frames_needed {
+            if rain.is_playing {
+                rain.telemetry.is_prebuffered = false;
+                for i in 0..frames_needed {
+                    if let Some((l, r)) = rb.pop_frame() {
+                        left_out[i] = soft_limit(l * rain.master_volume);
+                        right_out[i] = soft_limit(r * rain.master_volume);
+                    } else {
                         left_out[i] = 0.0;
                         right_out[i] = 0.0;
                     }
+                }
+            } else {
+                for i in 0..frames_needed {
+                    left_out[i] = 0.0;
+                    right_out[i] = 0.0;
+                }
 
-                    if current_available >= target_headroom_frames.saturating_sub(64) {
-                        rain.telemetry.is_prebuffered = true;
-                        rain.telemetry.governor_status = "Pre-Buffered & Ready (Happy)".into();
-                    } else {
-                        rain.telemetry.is_prebuffered = false;
-                        rain.telemetry.governor_status = format!(
-                            "Pre-Buffering... ({:.0}ms / {:.0}ms)",
-                            buffer_ms,
-                            action.target_buffer_ms
-                        );
-                    }
+                if current_available >= target_headroom_frames.saturating_sub(64) {
+                    rain.telemetry.is_prebuffered = true;
+                    rain.telemetry.governor_status = "Pre-Buffered & Ready (Happy)".into();
+                } else {
+                    rain.telemetry.is_prebuffered = false;
+                    rain.telemetry.governor_status = format!(
+                        "Pre-Buffering... ({:.0}ms / {:.0}ms)",
+                        buffer_ms,
+                        action.target_buffer_ms
+                    );
                 }
             }
 

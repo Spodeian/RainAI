@@ -1,10 +1,12 @@
 //! Neural Inference Runner for block-based autoregressive audio synthesis with async fallback.
 
 use crate::asset_manager::{AssetManager, ExecutionPath};
+use crate::engram::EngramBank;
 use crate::kernels;
-use crate::model::{PrecisionFormat, QuantizedLayer, QuantizedModelManifest};
+use crate::model::{MoeExecutionMode, QuantizedLayer, QuantizedModelManifest};
 use crate::weight_cache_manager::WeightCacheManager;
-use crate::weight_loader::WeightCache;
+use crate::weight_loader::{LoadedLayer, WeightBuffer, WeightCache};
+
 use shared::rain::{QualityTier, CONDITION_DIM};
 
 /// Neural model status
@@ -32,11 +34,20 @@ pub struct InferenceRunner {
     pub active_experts: usize,
     pub diffusion_bypass: bool,
     pub weight_cache: WeightCache,
-    _layers: Vec<QuantizedLayer>,
-    latent_state: [f32; 64],
-    u_t_buffer: [f32; 64],
-    crossfade_counter: usize,
+    pub _layers: Vec<QuantizedLayer>,
+    pub latent_state: [f32; 64],
+    pub u_t_buffer: [f32; 64],
+    pub crossfade_counter: usize,
+    pub thinking_steps: usize,
+    pub use_consistency_jump: bool,
+    pub ssm_momentum_alpha: f32,
+    pub moe_mode: MoeExecutionMode,
+    pub cached_cond_hash: u64,
+    pub cond_cache_valid: bool,
+    pub engram_bank: Option<EngramBank>,
+    pub latent_kv_cache: Vec<[f32; 32]>,
 }
+
 
 impl Default for InferenceRunner {
     fn default() -> Self {
@@ -45,6 +56,52 @@ impl Default for InferenceRunner {
 }
 
 impl InferenceRunner {
+    #[inline]
+    fn dispatch_projection(
+        layer: &LoadedLayer,
+        input: &[f32],
+        bias: Option<&[f32]>,
+        output: &mut [f32],
+    ) {
+        match &layer.buffer {
+            WeightBuffer::Ternary2Bit { packed, gamma } => {
+                kernels::ternary_matmul_simd_f32(packed, input, output, *gamma);
+                if let Some(b) = bias {
+                    for (out, &b_val) in output.iter_mut().zip(b.iter()) {
+                        *out += b_val;
+                    }
+                }
+            }
+            WeightBuffer::Int8 { weights, scale } => {
+                kernels::int8_matmul_simd_f32(weights, input, output, *scale);
+                if let Some(b) = bias {
+                    for (out, &b_val) in output.iter_mut().zip(b.iter()) {
+                        *out += b_val;
+                    }
+                }
+            }
+            WeightBuffer::Posit8 { raw, scale } => {
+                kernels::posit8_matmul_simd_f32(raw, input, output, *scale);
+                if let Some(b) = bias {
+                    for (out, &b_val) in output.iter_mut().zip(b.iter()) {
+                        *out += b_val;
+                    }
+                }
+            }
+            WeightBuffer::Bf16 { raw, scale } => {
+                kernels::bf16_matmul_simd_f32(raw, input, output, *scale);
+                if let Some(b) = bias {
+                    for (out, &b_val) in output.iter_mut().zip(b.iter()) {
+                        *out += b_val;
+                    }
+                }
+            }
+            _ => {
+                kernels::dense_projection(input, &layer.weights, bias, output);
+            }
+        }
+    }
+
     pub fn new(tier: QualityTier, weight_cache: WeightCache) -> Self {
         let assets = AssetManager::new();
         let (active_tier, is_fallback) = assets.resolve_effective_tier(tier);
@@ -76,6 +133,47 @@ impl InferenceRunner {
             latent_state: [0.0; 64],
             u_t_buffer: [0.0; 64],
             crossfade_counter: 0,
+            thinking_steps: 3,
+            use_consistency_jump: false,
+            ssm_momentum_alpha: 0.10,
+            moe_mode: MoeExecutionMode::SparseDynamic,
+            cached_cond_hash: 0,
+            cond_cache_valid: false,
+            engram_bank: Some(EngramBank::new()),
+            latent_kv_cache: Vec::new(),
+        }
+    }
+
+    /// Sets the MoE execution pathway (e.g. SparseDynamic vs DenseSoupDynamic)
+    pub fn set_moe_mode(&mut self, mode: MoeExecutionMode) {
+        self.moe_mode = mode;
+    }
+
+    /// Gets active MoE execution mode
+    pub fn moe_mode(&self) -> MoeExecutionMode {
+        self.moe_mode
+    }
+
+    /// Sets the SSM state momentum damping coefficient (clamped 0.0..=0.5).
+    /// Stabilizes recurrent trajectory dynamics during turbulent gusts.
+    pub fn set_ssm_momentum_alpha(&mut self, alpha: f32) {
+        self.ssm_momentum_alpha = alpha.clamp(0.0, 0.5);
+    }
+
+    /// Bidirectional lookahead trajectory smoothing on conditioning vectors.
+    /// Uses a non-causal Gaussian kernel across the window to eliminate parameter jitter.
+    pub fn smooth_conditioning_trajectory(trajectory: &mut [[f32; CONDITION_DIM]]) {
+        let n = trajectory.len();
+        if n < 3 {
+            return;
+        }
+        let original = trajectory.to_vec();
+        for i in 1..n - 1 {
+            for d in 0..CONDITION_DIM {
+                trajectory[i][d] = 0.25 * original[i - 1][d]
+                    + 0.50 * original[i][d]
+                    + 0.25 * original[i + 1][d];
+            }
         }
     }
 
@@ -84,9 +182,69 @@ impl InferenceRunner {
         self.active_experts = experts.clamp(2, 8);
     }
 
+    /// Set latent deliberation thinking steps (clamped 1..=5)
+    pub fn set_thinking_steps(&mut self, steps: usize) {
+        self.thinking_steps = steps.clamp(1, 5);
+    }
+
+    /// Enable or disable 1-step consistency distillation jump head
+    pub fn set_use_consistency_jump(&mut self, enabled: bool) {
+        self.use_consistency_jump = enabled;
+    }
+
+    /// Returns true if the consistency jump head weights are loaded in cache
+    pub fn has_consistency_jump_head(&self) -> bool {
+        self.weight_cache.contains("consistency_head.proj.weight")
+    }
+
     /// Enable or disable latent diffusion bypass under emergency panic conditions
     pub fn set_diffusion_bypass(&mut self, bypass: bool) {
         self.diffusion_bypass = bypass;
+    }
+
+    #[inline]
+    fn ensure_conditioning_projection(&mut self, conditioning: &[f32; CONDITION_DIM]) {
+        // Fast hash-check for conditioning gateway cache validity
+        // Hashes dynamic weather/environmental parameters (512..554) and semantic embedding sample (0..8)
+        let mut cond_hash = 14695981039346656037u64;
+        for (i, &v) in conditioning[512..].iter().chain(conditioning[..8].iter()).enumerate() {
+            cond_hash = (cond_hash ^ (v.to_bits() as u64).wrapping_mul((i + 1) as u64)).wrapping_mul(1099511628211);
+        }
+
+        if !self.cond_cache_valid || self.cached_cond_hash != cond_hash {
+            if let Some(cond_layer) = self.weight_cache.get("encoder.cond_proj.weight") {
+                let bias = self.weight_cache.get("encoder.cond_proj.bias");
+                let bias_ref = bias.as_ref().map(|b| b.weights.as_slice());
+                Self::dispatch_projection(&cond_layer, conditioning, bias_ref, &mut self.u_t_buffer);
+            }
+            kernels::simd_silu_in_place(&mut self.u_t_buffer);
+            self.cached_cond_hash = cond_hash;
+            self.cond_cache_valid = true;
+        }
+    }
+
+    /// Fast 1-step distilled inference directly projecting conditioning through consistency jump head
+    pub fn fast_consistency_step(&mut self, conditioning: &[f32; CONDITION_DIM]) -> (f32, f32, f32, f32) {
+        // 1. Conditioning Projection (cached when input parameters are invariant)
+        self.ensure_conditioning_projection(conditioning);
+
+        // 2. Consistency Jump Head Projection: u_t (64) -> FOA (4)
+        let mut foa_out = [0.0; 4];
+        if let Some(jump_layer) = self.weight_cache.get("consistency_head.proj.weight") {
+            let bias = self.weight_cache.get("consistency_head.proj.bias");
+            let bias_ref = bias.as_ref().map(|b| b.weights.as_slice());
+            Self::dispatch_projection(&jump_layer, &self.u_t_buffer, bias_ref, &mut foa_out);
+        } else {
+            return self.step(conditioning);
+        }
+
+        let bit_scale = (self.max_bit_width / 8.0).clamp(0.5, 1.5);
+        (
+            foa_out[0] * bit_scale,
+            foa_out[1] * bit_scale,
+            foa_out[2] * bit_scale,
+            foa_out[3] * bit_scale,
+        )
     }
 
     /// Set requested target tier; triggers async download if needed and selects best available fallback
@@ -123,10 +281,15 @@ impl InferenceRunner {
         }
     }
 
-    /// Update dynamic quantization bounds driven by the Meta-Governor
+    /// Update dynamic continuous bit-width quantization bounds from autonomous governor
     pub fn update_quantization_bounds(&mut self, min_bits: f32, max_bits: f32) {
-        self.min_bit_width = min_bits.clamp(1.58, 32.0);
-        self.max_bit_width = max_bits.clamp(self.min_bit_width, 32.0);
+        self.min_bit_width = min_bits;
+        self.max_bit_width = max_bits;
+    }
+
+    /// Returns active execution path
+    pub fn active_path(&self) -> ExecutionPath {
+        self.active_path
     }
 
     /// Polls background download progress and hot-swaps to target tier when ready
@@ -142,6 +305,10 @@ impl InferenceRunner {
     /// Run one step of inference given the 554-dim conditioning vector
     /// Returns 4-channel FOA values (W, X, Y, Z)
     pub fn step(&mut self, conditioning: &[f32; CONDITION_DIM]) -> (f32, f32, f32, f32) {
+        if self.use_consistency_jump && self.has_consistency_jump_head() {
+            return self.fast_consistency_step(conditioning);
+        }
+
         let cond_energy: f32 = conditioning.iter().take(32).sum::<f32>() / 32.0;
 
         // Emergency Latent Diffusion Bypass Mode
@@ -153,81 +320,74 @@ impl InferenceRunner {
             return (w, x, y, z);
         }
 
-        // 1. Conditioning Projection: u_t = W_in @ c_t + b_in
-        if let Some(cond_layer) = self.weight_cache.get("encoder.cond_proj.weight") {
-            let bias = self.weight_cache.get("encoder.cond_proj.bias");
-            let bias_ref = bias.as_ref().map(|b| b.weights.as_slice());
-            
-            if cond_layer.format == PrecisionFormat::Ternary158 {
-                kernels::ternary_matmul_simd_f32(
-                    &cond_layer.packed_weights,
-                    conditioning,
-                    &mut self.u_t_buffer,
-                    cond_layer.scale,
+        // 1. Conditioning Projection: u_t = silu(W_in @ c_t + b_in) (cached when input parameters are invariant)
+        self.ensure_conditioning_projection(conditioning);
+
+        // 2. Mamba2 Recurrence & MoE Dispatch across Thinking Deliberation Steps (1..=5)
+        let iterations = self.thinking_steps.clamp(1, 5);
+        let top_k = 2; // Route to top 2 experts
+        let decay_factor = 0.85; // Unselected expert state decay
+
+        for _ in 0..iterations {
+            let prev_latent = self.latent_state;
+
+            if let (Some(a_diag), Some(b_diag)) = (
+                self.weight_cache.get("mamba.A_diag.weight"),
+                self.weight_cache.get("mamba.B_diag.weight")
+            ) {
+                kernels::step_recurrence_f32(
+                    &mut self.latent_state,
+                    &a_diag.weights,
+                    &b_diag.weights,
+                    &self.u_t_buffer,
                 );
-                if let Some(b) = bias_ref {
-                    for (u, &bias_val) in self.u_t_buffer.iter_mut().zip(b.iter()) {
-                        *u += bias_val;
+            }
+
+            // O(1) Engram physical prior gated lookup
+            if let Some(ref engram) = self.engram_bank {
+                engram.fuse_in_place(&mut self.latent_state, 0.15);
+            }
+
+            // Apply SSM state momentum damping: s_t = alpha * s_{t-1} + (1 - alpha) * s_{recurrence}
+            if self.ssm_momentum_alpha > 0.0 {
+                let alpha = self.ssm_momentum_alpha;
+                for (curr, &prev) in self.latent_state.iter_mut().zip(prev_latent.iter()) {
+                    *curr = prev * alpha + *curr * (1.0 - alpha);
+                }
+            }
+
+            if let Some(router) = self.weight_cache.get("moe.router.weight") {
+                match self.moe_mode {
+                    MoeExecutionMode::SparseDynamic => {
+                        kernels::route_and_decay(
+                            &mut self.latent_state,
+                            &router.weights,
+                            8, // Total experts
+                            top_k,
+                            decay_factor,
+                        );
+                    }
+                    MoeExecutionMode::DenseSoupDynamic | MoeExecutionMode::DenseSoupStatic => {
+                        // In dense soup mode, state is preserved without sparse decay
+                    }
+                    MoeExecutionMode::DualMacroSoup => {
+                        kernels::route_and_decay(
+                            &mut self.latent_state,
+                            &router.weights,
+                            8,
+                            1, // Dominant specialist + shared base
+                            decay_factor,
+                        );
                     }
                 }
-            } else {
-                kernels::dense_projection(
-                    conditioning, 
-                    &cond_layer.weights, 
-                    bias_ref, 
-                    &mut self.u_t_buffer
-                );
             }
         }
 
-        // Apply Mamba2 SiLU Gating Activation
-        kernels::simd_silu_in_place(&mut self.u_t_buffer);
-
-        // 2. Mamba2 Recurrence: s_t = A * s_{t-1} + B * u_t
-        if let (Some(a_diag), Some(b_diag)) = (
-            self.weight_cache.get("mamba.A_diag.weight"),
-            self.weight_cache.get("mamba.B_diag.weight")
-        ) {
-            kernels::step_recurrence_f32(
-                &mut self.latent_state,
-                &a_diag.weights,
-                &b_diag.weights,
-                &self.u_t_buffer,
-            );
-        }
-
-        // 3. MoE Dispatch & Expert Shedding
-        let top_k = 2; // Route to top 2 experts
-        let decay_factor = 0.85; // Unselected expert state decay
-        
-        if let Some(router) = self.weight_cache.get("moe.router.weight") {
-            kernels::route_and_decay(
-                &mut self.latent_state,
-                &router.weights,
-                8, // Total experts
-                top_k,
-                decay_factor,
-            );
-        }
 
         // 4. Ambisonic FOA Projection: y_t = W_foa @ s_t
         let mut foa_out = [0.0; 4];
         if let Some(foa_layer) = self.weight_cache.get("decoder.foa_proj.weight") {
-            if foa_layer.format == PrecisionFormat::Ternary158 {
-                kernels::ternary_matmul_simd_f32(
-                    &foa_layer.packed_weights,
-                    &self.latent_state,
-                    &mut foa_out,
-                    foa_layer.scale,
-                );
-            } else {
-                kernels::dense_projection(
-                    &self.latent_state,
-                    &foa_layer.weights,
-                    None, 
-                    &mut foa_out
-                );
-            }
+            Self::dispatch_projection(&foa_layer, &self.latent_state, None, &mut foa_out);
         }
 
         if self.crossfade_counter > 0 {
@@ -252,6 +412,7 @@ impl InferenceRunner {
         if tier.is_download_required() && !self.assets.tier_state(tier).is_ready() {
             let new_cache = WeightCacheManager::load_tier(tier).await?;
             self.weight_cache = new_cache;
+            self.cond_cache_valid = false;
             
             *self.assets.tier_state_mut(tier) = crate::asset_manager::AssetState::Ready;
             self.active_tier = tier;

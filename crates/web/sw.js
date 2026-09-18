@@ -1,6 +1,6 @@
-// Service Worker for Serverless & Desktop Template
+// Service Worker for RainAI Neural Spatial Soundscape Studio
 // Strategy: Cache-First with Background Network Revalidation (Stale-While-Revalidate)
-const CACHE_NAME = 'serverless-desktop-template-cache-v20260916';
+const CACHE_NAME = 'rainai-soundscape-v0.2.0';
 
 // Static assets to pre-cache on install
 const PRECACHE_ASSETS = [

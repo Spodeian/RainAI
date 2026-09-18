@@ -1,4 +1,4 @@
-//! Native desktop application runner for the Serverless & Desktop Template.
+//! Native Desktop Studio Executable for RainAI: Real-Time Neural & Physical Spatial Soundscape Synthesis.
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 

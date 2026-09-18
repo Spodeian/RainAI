@@ -174,31 +174,43 @@ impl BinauralConvolver {
         self.history_y[self.cursor] = frame.y;
         self.history_z[self.cursor] = frame.z;
 
-        let mut conv_w = 0.0;
-        let mut conv_x = 0.0;
-        let mut conv_y = 0.0;
-        let mut conv_z = 0.0;
+        let mut conv_w = 0.0f32;
+        let mut conv_x = 0.0f32;
+        let mut conv_y = 0.0f32;
+        let mut conv_z = 0.0f32;
+
+        // Bitwise index mask (HRTF_FILTER_LENGTH is 32, a power of two)
+        const MASK: usize = HRTF_FILTER_LENGTH - 1;
+        let cursor = self.cursor;
 
         for tap in 0..HRTF_FILTER_LENGTH {
-            let idx = (self.cursor + HRTF_FILTER_LENGTH - tap) % HRTF_FILTER_LENGTH;
+            let idx = (cursor + HRTF_FILTER_LENGTH - tap) & MASK;
             conv_w += self.history_w[idx] * HRTF_COEFFS_W[tap];
             conv_x += self.history_x[idx] * HRTF_COEFFS_X[tap];
             conv_y += self.history_y[idx] * HRTF_COEFFS_Y[tap];
             conv_z += self.history_z[idx] * HRTF_COEFFS_Z[tap];
         }
 
-        self.cursor = (self.cursor + 1) % HRTF_FILTER_LENGTH;
+        self.cursor = (self.cursor + 1) & MASK;
 
         // Symmetric decomposition:
-        // Left = W + X + Y + Z
-        // Right = W + X - Y + Z
-        let common = conv_w + conv_x + conv_z;
+        // Left = W + X + Z + Y
+        // Right = W + X + Z - Y
+        // Overhead pinna reflection boost: enhance high-frequency immersion when Z > 0 (tin roof, skylights)
+        let z_elevation_cue = if frame.z > 0.0 {
+            frame.z * 0.12
+        } else {
+            frame.z * 0.06
+        };
+
+        let common = conv_w + conv_x + conv_z + z_elevation_cue;
         StereoFrame {
             left: common + conv_y,
             right: common - conv_y,
         }
     }
 }
+
 
 /// Universal Ambisonic Decoder routing to Headphones, Stereo Speakers, or 7.1
 #[derive(Clone, Debug, Default)]

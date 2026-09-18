@@ -1,4 +1,7 @@
-//! Web entrypoint and WebRunner for the Serverless & Desktop Template.
+//! WebAssembly (WASM) Entry Point and PWA Runner for RainAI.
+//!
+//! Handles client-side WebGPU shader pipeline initialization, WebAudio audio worklet contexts,
+//! canvas resizing, console panic hooks, and JavaScript/TypeScript interop bindings.
 
 #[cfg(target_arch = "wasm32")]
 use app::TemplateApp;

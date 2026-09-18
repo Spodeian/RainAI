@@ -175,8 +175,8 @@ window.addEventListener('load', () => {
 // ============================================================================
 // Robust IndexedDB Fallback / Multi-Tier Storage Engine
 // ============================================================================
-const IDB_DB_NAME = 'app_template_offline_store';
-const IDB_STORE_NAME = 'app_template_kv';
+const IDB_DB_NAME = 'rainai_offline_store';
+const IDB_STORE_NAME = 'rainai_kv';
 const IDB_VERSION = 1;
 
 function openIdbDatabase() {
@@ -243,3 +243,47 @@ window.__deleteFromIndexedDB = async function (key) {
     return false;
   }
 };
+
+// ============================================================================
+// Screen Wake Lock API (Prevents Mobile Sleep Throttling During Playback)
+// ============================================================================
+window.__wakeLockSentinel = null;
+window.__wakeLockDesired = false;
+
+window.__setWakeLock = async function (active) {
+  window.__wakeLockDesired = active;
+  if (!('wakeLock' in navigator)) {
+    return false;
+  }
+
+  try {
+    if (active) {
+      if (!window.__wakeLockSentinel) {
+        window.__wakeLockSentinel = await navigator.wakeLock.request('screen');
+        window.__wakeLockSentinel.addEventListener('release', () => {
+          window.__wakeLockSentinel = null;
+          console.log('[RainAI] Screen Wake Lock released');
+        });
+        console.log('[RainAI] Screen Wake Lock acquired for continuous audio playback');
+      }
+      return true;
+    } else {
+      if (window.__wakeLockSentinel) {
+        await window.__wakeLockSentinel.release();
+        window.__wakeLockSentinel = null;
+      }
+      return true;
+    }
+  } catch (err) {
+    console.warn('[RainAI] Screen Wake Lock error:', err);
+    return false;
+  }
+};
+
+// Re-acquire Wake Lock when tab becomes visible if playback was active
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' && window.__wakeLockDesired) {
+    await window.__setWakeLock(true);
+  }
+});
+

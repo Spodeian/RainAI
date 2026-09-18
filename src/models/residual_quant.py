@@ -4,7 +4,12 @@ Implements weight parameterization as a sum of discrete residual slices:
     W = sum_{i=0}^{N-1} S_i
 
 Allows dynamic evaluation at any slice truncation depth k in [0, N-1],
-enabling simultaneous training for Ternary 1.58b, INT4, INT8/BF16, INT16/FP16, and FP32.
+enabling simultaneous training aligned with Rust engine geometric midpoints:
+    - S0: Ternary 1.58b ([0.5, 1.807) bits) - Base Structural Scaffold
+    - S1: Coarse INT4/INT5 ([3.585, 5.585) bits) - Magnitude Envelope
+    - S2: Standard Posit8 / INT8 ([2.585, 7.585) bits) - Tapered Unum / Linear Fine Texture
+    - S3: High Dynamic Range BF16 / Posit16 ([7.585, 16.585) bits) - Wide Dynamic Exponent
+    - S4: Master Studio FP32 (>= 16.585 bits) - IEEE-754 Full Gradient Continuum
 """
 
 from typing import Optional, List, Tuple
@@ -12,13 +17,24 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-NUM_DEFAULT_SLICES = 5  # S0: Ternary, S1: Mobile/INT4, S2: Standard/INT8, S3: Studio/INT16, S4: Master/FP32
+NUM_DEFAULT_SLICES = 5  # S0: Ternary158, S1: INT4/INT5, S2: Posit8/INT8, S3: BF16/Posit16, S4: Studio FP32
+
+
+def smooth_round(x: torch.Tensor, tau: torch.Tensor) -> torch.Tensor:
+    """
+    O(1) Continuous differentiable relaxation of torch.round().
+    Replaces hard Straight-Through Estimators (STE) with a mathematically smooth staircase.
+    f(x) = floor(x) + sigmoid((x - floor(x) - 0.5) / tau)
+    """
+    floor_x = torch.floor(x)
+    rem = x - floor_x
+    return floor_x + torch.sigmoid((rem - 0.5) / tau)
 
 
 class ResidualWeight(nn.Module):
     """
     Decomposes a weight tensor into N residual slices: W = sum_{i=0}^{N-1} S_i.
-    Supports Straight-Through Estimator (STE) for discrete quantization on base slices
+    Uses continuous sigmoid relaxations for quantization on base slices
     and continuous residual learning on higher slices.
     """
     def __init__(self, shape: Tuple[int, ...], num_slices: int = NUM_DEFAULT_SLICES):
@@ -43,8 +59,18 @@ class ResidualWeight(nn.Module):
             slices.append(si)
             
         self.slices = nn.ParameterList(slices)
+        
         # Learnable scale for S0 ternary mapping
         self.gamma_scale = nn.Parameter(torch.tensor(1.0))
+        
+        # Learnable temperature for the smooth quantization staircase
+        # Initialize at sig(-2.0) ≈ 0.11
+        self.tau_raw = nn.Parameter(torch.tensor(-2.0))
+
+    @property
+    def tau(self) -> torch.Tensor:
+        """Bounded temperature [0.01, 1.0]. Approaches hard staircase as tau -> 0.01."""
+        return 0.01 + 0.99 * torch.sigmoid(self.tau_raw)
 
     def get_effective_weight(self, active_level: Optional[int] = None, quantize_base: bool = True) -> torch.Tensor:
         """
@@ -59,13 +85,12 @@ class ResidualWeight(nn.Module):
         # S0 processing:
         s0 = self.slices[0]
         if quantize_base and max_k == 0:
-            # Ternary 1.58b quantization with Straight-Through Estimator (STE)
-            # gamma = mean absolute value of s0
+            # Smooth Ternary 1.58b mapping
             gamma = (s0.abs().mean() * self.gamma_scale.abs()).clamp(min=1e-6)
             s0_scaled = s0 / gamma
-            s0_ternary = torch.round(s0_scaled).clamp(-1.0, 1.0)
-            # Straight-through estimator: forward is quantized, backward flows through s0
-            w_acc = (s0_ternary * gamma - s0).detach() + s0
+            
+            s0_ternary = smooth_round(s0_scaled, self.tau).clamp(-1.0, 1.0)
+            w_acc = s0_ternary * gamma
         else:
             w_acc = s0
             
@@ -75,23 +100,31 @@ class ResidualWeight(nn.Module):
             slice_stack = torch.stack(list(self.slices)[1:max_k + 1])
             w_acc = w_acc + slice_stack.sum(dim=0)
         else:
-            # Iterative STE accumulation for active quantization training
+            # Iterative continuous accumulation for active quantization training
             for i in range(1, max_k + 1):
                 si = self.slices[i]
                 if quantize_base and i == 1 and max_k == 1:
-                    # S1: Coarse INT4 simulation via STE
+                    # S1: Smooth Coarse INT4 simulation
                     scale_4 = (si.abs().max() / 7.0).clamp(min=1e-6)
-                    si_q = torch.round(si / scale_4).clamp(-8.0, 7.0) * scale_4
-                    w_acc = w_acc + (si_q - si).detach() + si
+                    si_q = smooth_round(si / scale_4, self.tau).clamp(-8.0, 7.0) * scale_4
+                    w_acc = w_acc + si_q
                 elif quantize_base and i == 2 and max_k == 2:
-                    # S2: INT8 simulation via STE
+                    # S2: Smooth INT8 simulation
                     scale_8 = (si.abs().max() / 127.0).clamp(min=1e-6)
-                    si_q = torch.round(si / scale_8).clamp(-128.0, 127.0) * scale_8
-                    w_acc = w_acc + (si_q - si).detach() + si
+                    si_q = smooth_round(si / scale_8, self.tau).clamp(-128.0, 127.0) * scale_8
+                    w_acc = w_acc + si_q
                 else:
                     w_acc = w_acc + si
                     
         return w_acc
+
+    def load_state_dict(self, state_dict, strict=True):
+        """Custom state_dict loader to support legacy flat weight checkpoints."""
+        if "weight" in state_dict and "slices.0" not in state_dict:
+            # Fallback for old checkpoints: map legacy flat weight into base slice S0
+            self.slices[0].data.copy_(state_dict["weight"])
+            return
+        super().load_state_dict(state_dict, strict=strict)
 
 
 class ResidualLinear(nn.Module):

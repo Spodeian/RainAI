@@ -20,9 +20,23 @@ wgpu = { workspace = true }
 bytemuck = { workspace = true }
 ringbuf = { workspace = true }
 futures-intrusive = "0.5"
+safetensors = "0.4"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
-web-sys = { workspace = true, features = ["Document", "Window", "HtmlCanvasElement", "Element", "Blob", "BlobPropertyBag", "Url", "HtmlAnchorElement", "HtmlDocument", "Location", "AudioContext", "AudioContextOptions", "AudioBuffer", "AudioBufferSourceNode", "AudioDestinationNode", "AudioNode", "GainNode", "ScriptProcessorNode", "AudioProcessingEvent"] }
+web-sys = { workspace = true, features = ["Document", "Window", "HtmlCanvasElement", "Element", "Blob", "BlobPropertyBag", "Url", "HtmlAnchorElement", "HtmlDocument", "Location", "AudioContext", "AudioContextOptions", "AudioBuffer", "AudioBufferSourceNode", "AudioDestinationNode", "AudioNode", "GainNode", "ScriptProcessorNode", "AudioProcessingEvent", "Response"] }
 js-sys = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+futures = { workspace = true }
+
+[[bench]]
+name = "kernel_benchmarks"
+harness = false
+
+[[bench]]
+name = "backend_comparison"
+harness = false
+

@@ -27,32 +27,15 @@ htmlcov/
 # ------------------------------------------------------------------------------
 # 3. Model Weights & Generated Inference Assets
 # ------------------------------------------------------------------------------
+checkpoints/
 ai/checkpoints/
-*.pt
+crates/inference/data/wasm/
 
 # ------------------------------------------------------------------------------
 # 4. Data Directories, Audio Datasets & Large Binary Media
 # ------------------------------------------------------------------------------
 # Ignore contents of root and workspace data directories, but allow .gitkeep files
-/data/*
-!/data/
-!/data/**/.gitkeep
-!/data/.gitkeep
-
-/Data/*
-!/Data/
-!/Data/**/.gitkeep
-!/Data/.gitkeep
-
-/ai/Data/*
-!/ai/Data/
-!/ai/Data/**/.gitkeep
-!/ai/Data/.gitkeep
-
-/crates/inference/data/*
-!/crates/inference/data/
-!/crates/inference/data/**/.gitkeep
-!/crates/inference/data/.gitkeep
+/data/*/*
 
 # Global exclusions for audio and binary model artifacts
 *.flac
@@ -63,6 +46,7 @@ ai/checkpoints/
 *.onnx
 *.onnx.data
 *.bin
+*.pt
 
 # ------------------------------------------------------------------------------
 # 5. Frontend UI, Web & Edge Cloud Deployments
@@ -75,8 +59,7 @@ ai/checkpoints/
 # ------------------------------------------------------------------------------
 # 6. Logging, Tracking & Telemetry
 # ------------------------------------------------------------------------------
-logs/*.log
-ai/logs/*.log
+logs/*
 
 # ------------------------------------------------------------------------------
 # 7. Operating System & System Cache

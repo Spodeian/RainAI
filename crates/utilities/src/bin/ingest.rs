@@ -1,219 +1,189 @@
-use anyhow::{bail, Result};
-use std::fs::{self, File, OpenOptions};
-use std::io::{copy, Write};
-use std::path::Path;
+use anyhow::Result;
+use futures::StreamExt;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::time::Duration;
+use tokio::fs::{self, OpenOptions};
+use tokio::io::AsyncWriteExt;
 use tracing::{error, info, warn};
+use utilities::ingest::{
+    analyze_wav_file, compute_file_sha256, download_file_with_retry, CanonicalSurface,
+    DownloadItem, LicenseVerifier, ProvenanceManifest, ProvenanceRecord, SurfaceBalanceQuota,
+};
 
-#[derive(Debug, Clone)]
-pub struct DownloadItem {
-    pub url: &'static str,
-    pub filename: &'static str,
-    pub category: &'static str,
-    pub license: &'static str,
-    pub source_platform: &'static str,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LicenseTier {
-    PublicDomain,     // CC0, Public Domain, U.S. Government Work
-    AttributionOnly,  // CC-BY (Commercial friendly with attribution)
-    ShareAlike,       // CC-BY-SA (Commercial friendly with attribution and share-alike)
-    Restricted,       // NC, ND, or Proprietary (Rejected)
-}
-
-pub struct LicenseVerifier;
-
-impl LicenseVerifier {
-    pub fn verify(license: &str) -> (bool, LicenseTier, &'static str) {
-        let clean = license.trim().to_lowercase();
-        
-        // Strict exclusion of NonCommercial (NC) and NoDerivatives (ND)
-        if clean.contains("nc") || clean.contains("noncommercial") || clean.contains("nd") {
-            return (false, LicenseTier::Restricted, "Rejected: NonCommercial or NoDerivatives clause detected");
-        }
-        
-        if clean.contains("cc-by-sa") {
-            return (true, LicenseTier::ShareAlike, "Approved: CC-BY-SA (Commercial compatible with share-alike)");
-        }
-        if clean.contains("cc-by") || clean.contains("attribution") || clean.contains("mixkit free license") {
-            return (true, LicenseTier::AttributionOnly, "Approved: CC-BY / Commercial free with attribution");
-        }
-        if clean.contains("cc0") || clean.contains("public domain") || clean.contains("open access") || clean.contains("nps natural sound") {
-            return (true, LicenseTier::PublicDomain, "Approved: Public domain / CC0 / Government unconstrained");
-        }
-        
-        (false, LicenseTier::Restricted, "Rejected: Unverified or restrictive license format")
-    }
-}
-
-const CURATED_SOURCES: &[DownloadItem] = &[
-    // --- BigSoundBank (CC0) ---
-    DownloadItem {
-        url: "https://bigsoundbank.com/UPLOAD/mp3/0740.mp3",
-        filename: "bigsoundbank_rain_thunder_0740.mp3",
-        category: "heavy_rain_thunder",
-        license: "CC0",
-        source_platform: "BigSoundBank",
-    },
-    DownloadItem {
-        url: "https://bigsoundbank.com/UPLOAD/mp3/1019.mp3",
-        filename: "bigsoundbank_rain_pavement_1019.mp3",
-        category: "surface_pavement",
-        license: "CC0",
-        source_platform: "BigSoundBank",
-    },
-    DownloadItem {
-        url: "https://bigsoundbank.com/UPLOAD/mp3/0124.mp3",
-        filename: "bigsoundbank_rain_window_0124.mp3",
-        category: "surface_window",
-        license: "CC0",
-        source_platform: "BigSoundBank",
-    },
-    
-    // --- Wikimedia Commons (CC-BY-SA / Public Domain) ---
-    DownloadItem {
-        url: "https://upload.wikimedia.org/wikipedia/commons/3/3f/Rain_on_tent.ogg",
-        filename: "wikimedia_rain_tent.ogg",
-        category: "canvas_tent",
-        license: "CC-BY-SA 4.0",
-        source_platform: "Wikimedia Commons",
-    },
-    
-    // --- Freesound (CC-BY Direct CDN Previews) ---
-    DownloadItem {
-        url: "https://cdn.freesound.org/previews/513/513142_6141316-lq.mp3",
-        filename: "freesound_heavy_rain_storm.mp3",
-        category: "heavy_rain_thunder",
-        license: "CC-BY 4.0",
-        source_platform: "Freesound",
-    },
-    
-    // --- Mixkit Free Sound Effects (Commercial Free with Attribution) ---
-    DownloadItem {
-        url: "https://assets.mixkit.co/active_storage/sfx/1255/1255-preview.mp3",
-        filename: "mixkit_light_rain_loop.mp3",
-        category: "gentle_drizzle",
-        license: "Mixkit Free License",
-        source_platform: "Mixkit",
-    },
-    
-    // --- SoundBible (Public Domain) ---
-    DownloadItem {
-        url: "https://soundbible.com/grab.php?id=2215&type=mp3",
-        filename: "soundbible_thunder_clap.mp3",
-        category: "heavy_rain_thunder",
-        license: "Public Domain",
-        source_platform: "SoundBible",
-    },
-    
-    // --- Videvo Free Sound Effects (CC-BY) ---
-    DownloadItem {
-        url: "https://www.videvo.net/videvo_files/converted/2015_10/preview/Rain_Heavy_1.mp378873.mp3",
-        filename: "videvo_heavy_rain_shower.mp3",
-        category: "heavy_rain_thunder",
-        license: "CC-BY 3.0",
-        source_platform: "Videvo",
-    },
-    
-    // --- Internet Archive / Wayback Machine (Public Domain) ---
-    DownloadItem {
-        url: "https://archive.org/download/RainSoundEffect/Rain.mp3",
-        filename: "archive_org_rain_ambient.mp3",
-        category: "steady_rain",
-        license: "Public Domain",
-        source_platform: "Wayback Machine / Internet Archive",
-    },
-
-    // --- National Park Service Natural Sounds (Public Domain / Gov Work) ---
-    DownloadItem {
-        url: "https://www.nps.gov/subjects/soundscape/_images/thunderstorm_sample.mp3",
-        filename: "nps_wilderness_thunderstorm.mp3",
-        category: "thunderstorm",
-        license: "Public Domain",
-        source_platform: "National Park Service (NPS) Archive",
-    },
-
-    // --- Smithsonian Open Access (CC0) ---
-    DownloadItem {
-        url: "https://ids.si.edu/ids/deliveryService?id=Smithsonian_Weather_Field_01.mp3",
-        filename: "smithsonian_field_meteorology.mp3",
-        category: "pine_needles",
-        license: "CC0",
-        source_platform: "Smithsonian Open Access",
-    },
-
-    // --- OpenGameArt.org (CC0) ---
-    DownloadItem {
-        url: "https://opengameart.org/sites/default/files/Rain%20Heavy%20Loop.ogg",
-        filename: "opengameart_heavy_rain_loop.ogg",
-        category: "heavy_rain_thunder",
-        license: "CC0",
-        source_platform: "OpenGameArt",
-    },
-];
-
-fn download_file(url: &str, destination: &Path) -> Result<()> {
-    let client = reqwest::blocking::Client::builder()
-        .user_agent("RainAI-Dataset-Collector/1.0")
-        .build()?;
-    let mut resp = client.get(url).send()?;
-    if !resp.status().is_success() {
-        bail!("Failed with HTTP status {}", resp.status());
-    }
-    let mut file = File::create(destination)?;
-    copy(&mut resp, &mut file)?;
-    Ok(())
-}
-
-fn log_attribution(attr_path: &Path, item: &DownloadItem, tier: LicenseTier) -> Result<()> {
-    let mut file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(attr_path)?;
-    writeln!(
-        file,
-        "Platform: {} | File: {} | Category: {} | Tier: {:?} | License: {} | URL: {}",
-        item.source_platform, item.filename, item.category, tier, item.license, item.url
-    )?;
-    Ok(())
-}
-
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
-    info!("Starting Multi-Source Open Audio Ingest Engine...");
+    info!("Starting Asynchronous Multi-Source Open Audio Ingest Engine v4.0...");
 
-    let target_dir = Path::new("Data/rain");
-    fs::create_dir_all(target_dir)?;
+    // 1. Read and parse the JSON database
+    let db_path = PathBuf::from("sources.json");
+    let db_content = fs::read_to_string(&db_path).await?;
+    let curated_sources: Vec<DownloadItem> = serde_json::from_str(&db_content)?;
+
+    let target_dir = PathBuf::from("Data/rain");
+    fs::create_dir_all(&target_dir).await?;
     let attr_file = target_dir.join("ATTRIBUTIONS.txt");
+    let provenance_file = target_dir.join("manifest_provenance.json");
 
-    for item in CURATED_SOURCES {
-        let (approved, tier, reason) = LicenseVerifier::verify(item.license);
-        if !approved {
-            warn!("Skipping [{}] {}: {}", item.source_platform, item.filename, reason);
-            continue;
-        }
+    // 2. Audit surface representation and diversity entropy
+    let mut quota = SurfaceBalanceQuota::new(5);
+    for item in &curated_sources {
+        quota.record(CanonicalSurface::from_category_tag(&item.category));
+    }
 
-        let dest = target_dir.join(item.filename);
-        if dest.exists() {
-            info!("File already exists: {:?}", dest.file_name().unwrap());
-            continue;
-        }
+    info!(
+        "Audited {} candidate sources across 9 canonical surfaces. Shannon diversity index: {:.3} (Normalized: {:.1}%)",
+        curated_sources.len(),
+        quota.shannon_entropy(),
+        quota.normalized_diversity() * 100.0
+    );
 
-        info!("Downloading [{}] {:?} [{}]...", item.source_platform, item.filename, item.license);
-        match download_file(item.url, &dest) {
-            Ok(_) => {
-                info!("Successfully downloaded {:?}", dest.file_name().unwrap());
-                let _ = log_attribution(&attr_file, item, tier);
+    let underrepresented = quota.underrepresented_surfaces();
+    if !underrepresented.is_empty() {
+        warn!(
+            "Underrepresented surfaces (< {} sources): {:?}",
+            quota.target_per_surface,
+            underrepresented
+                .into_iter()
+                .map(|(s, c)| format!("{}: {}", s.as_str(), c))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    let client = reqwest::Client::builder()
+        .user_agent("RainAI-Dataset-Collector/4.0")
+        .timeout(Duration::from_secs(45))
+        .pool_idle_timeout(Duration::from_secs(15))
+        .build()?;
+
+    // 3. Create concurrent async pipeline capping out at 8 active HTTP sockets
+    let stream = futures::stream::iter(curated_sources.into_iter().map(|item| {
+        let client = client.clone();
+        let target_dir = target_dir.clone();
+
+        async move {
+            let canonical = CanonicalSurface::from_category_tag(&item.category);
+            let (approved, tier, reason) = LicenseVerifier::verify(&item.license);
+            if !approved {
+                warn!("Skipping [{}] {}: {}", item.source_platform, item.filename, reason);
+                return None;
             }
-            Err(e) => {
-                error!("Download failed for {} ({}), URL {}: {}", item.source_platform, item.filename, item.url, e);
-                if dest.exists() {
-                    let _ = fs::remove_file(dest);
+
+            if item.ingest_method != "direct_http" {
+                info!("Delegating {} to external pipeline (Method: {})", item.filename, item.ingest_method);
+                return None;
+            }
+
+            let dest = target_dir.join(&item.filename);
+            let already_existed = dest.exists();
+
+            if !already_existed {
+                info!("Downloading [{}] {:?} [{}]...", item.source_platform, item.filename, item.license);
+                if let Err(e) = download_file_with_retry(&client, &item.url, &dest).await {
+                    error!("Download failed for {} ({}), URL {}: {}", item.source_platform, item.filename, item.url, e);
+                    if dest.exists() {
+                        let _ = fs::remove_file(&dest).await;
+                    }
+                    return None;
                 }
+                info!("Successfully downloaded {:?}", dest.file_name().unwrap());
+            } else {
+                info!("File already exists: {:?}", dest.file_name().unwrap());
             }
+
+            // Cryptographic checksum and file size
+            let sha256 = compute_file_sha256(&dest).unwrap_or_else(|_| "hash_error".to_string());
+            let file_size_bytes = std::fs::metadata(&dest).map(|m| m.len()).unwrap_or(0);
+
+            // Acoustic quality screening for WAV audio
+            let quality = if item.filename.ends_with(".wav") {
+                match analyze_wav_file(&dest) {
+                    Ok(q) => {
+                        if !q.is_valid_rain_texture {
+                            warn!(
+                                "Acoustic screening warning for {}: low energy/flatness (RMS={:.4}, Flatness={:.3}, Entropy={:.3})",
+                                item.filename, q.rms_energy, q.spectral_flatness, q.spectral_entropy
+                            );
+                        }
+                        Some(q)
+                    }
+                    Err(e) => {
+                        warn!("Could not compute acoustic quality for {}: {}", item.filename, e);
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
+            let log_line = format!(
+                "Platform: {} | File: {} | Category: {} (Surface: {}) | Tier: {:?} | License: {} | SHA256: {} | URL: {}\n",
+                item.source_platform, item.filename, item.category, canonical.as_str(), tier, item.license, sha256, item.url
+            );
+
+            let record = ProvenanceRecord {
+                filename: item.filename,
+                source_url: item.url,
+                source_platform: item.source_platform,
+                category: item.category,
+                canonical_surface: canonical,
+                license: item.license,
+                license_tier: tier,
+                sha256,
+                file_size_bytes,
+                quality,
+            };
+
+            Some((log_line, record))
+        }
+    }))
+    .buffer_unordered(8);
+
+    // Collect results
+    let results: Vec<Option<(String, ProvenanceRecord)>> = stream.collect().await;
+    let mut successful_logs = Vec::new();
+    let mut provenance_records = Vec::new();
+    let mut cat_distribution: HashMap<String, usize> = HashMap::new();
+    let mut surf_distribution: HashMap<String, usize> = HashMap::new();
+
+    for (log, rec) in results.into_iter().flatten() {
+        *cat_distribution.entry(rec.category.clone()).or_insert(0) += 1;
+        *surf_distribution.entry(rec.canonical_surface.as_str().to_string()).or_insert(0) += 1;
+        successful_logs.push(log);
+        provenance_records.push(rec);
+    }
+
+    if !successful_logs.is_empty() {
+        let mut file = OpenOptions::new().create(true).append(true).open(&attr_file).await?;
+        for log in successful_logs {
+            file.write_all(log.as_bytes()).await?;
         }
     }
 
-    info!("Multi-source ingestion pass complete. Provenance and attribution logged to {:?}", attr_file);
+    let manifest = ProvenanceManifest {
+        generated_at_utc: chrono_lite_timestamp(),
+        total_sources: provenance_records.len(),
+        normalized_surface_diversity: quota.normalized_diversity(),
+        category_distribution: cat_distribution,
+        surface_distribution: surf_distribution,
+        records: provenance_records,
+    };
+
+    let manifest_json = serde_json::to_string_pretty(&manifest)?;
+    fs::write(&provenance_file, manifest_json).await?;
+
+    info!(
+        "Multi-source ingestion pass complete. Provenance manifest saved to {:?}, attributions logged to {:?}",
+        provenance_file, attr_file
+    );
     Ok(())
 }
+
+fn chrono_lite_timestamp() -> String {
+    use std::time::SystemTime;
+    let duration = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default();
+    format!("{}.{}s_since_epoch", duration.as_secs(), duration.subsec_millis())
+}

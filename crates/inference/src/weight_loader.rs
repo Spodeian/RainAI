@@ -8,6 +8,53 @@ use std::sync::Arc;
 /// Raw embedded slice for default tier 0 (ternary 1.58-bit)
 pub const EMBEDDED_SLICE_0_TERNARY: &[u8] = include_bytes!("../data/slice_0_ternary.bin");
 
+/// Pre-packed, cache-aligned weight buffer for zero-overhead runtime SIMD execution
+#[derive(Clone, Debug)]
+pub enum WeightBuffer {
+    Ternary2Bit {
+        packed: Vec<u8>,
+        gamma: f32,
+    },
+    Int8 {
+        weights: Vec<i8>,
+        scale: f32,
+    },
+    Posit8 {
+        raw: Vec<u8>,
+        scale: f32,
+    },
+    Bf16 {
+        raw: Vec<u16>,
+        scale: f32,
+    },
+    Fp16 {
+        raw: Vec<u16>,
+        scale: f32,
+    },
+    Fp32 {
+        weights: Vec<f32>,
+    },
+}
+
+impl Default for WeightBuffer {
+    fn default() -> Self {
+        Self::Fp32 { weights: Vec::new() }
+    }
+}
+
+impl WeightBuffer {
+    pub fn format(&self) -> PrecisionFormat {
+        match self {
+            Self::Ternary2Bit { .. } => PrecisionFormat::Ternary158,
+            Self::Int8 { .. } => PrecisionFormat::Int8,
+            Self::Posit8 { .. } => PrecisionFormat::Posit8,
+            Self::Bf16 { .. } => PrecisionFormat::Bf16,
+            Self::Fp16 { .. } => PrecisionFormat::Fp16,
+            Self::Fp32 { .. } => PrecisionFormat::Fp32,
+        }
+    }
+}
+
 /// Memory-resident decoded tensor layer
 #[derive(Clone, Debug)]
 pub struct LoadedLayer {
@@ -19,6 +66,8 @@ pub struct LoadedLayer {
     pub weights: Vec<f32>,
     /// Raw 2-bit packed weights (used for Ternary158 zero-allocation SIMD kernels)
     pub packed_weights: Vec<u8>,
+    /// Zero-overhead tagged enum buffer for direct SIMD execution without runtime dequantization
+    pub buffer: WeightBuffer,
 }
 
 impl LoadedLayer {
@@ -214,6 +263,30 @@ impl WeightLoader {
                 }
             }
 
+            let buffer = match format {
+                PrecisionFormat::Ternary158 => WeightBuffer::Ternary2Bit {
+                    packed: packed_weights.clone(),
+                    gamma: meta.scale,
+                },
+                PrecisionFormat::Bf16 => {
+                    let raw_bf16: Vec<u16> = weights.iter().map(|&w| BoxCoxDequantizer::encode_bf16(w)).collect();
+                    WeightBuffer::Bf16 { raw: raw_bf16, scale: meta.scale }
+                }
+                PrecisionFormat::Fp16 => {
+                    let raw_fp16: Vec<u16> = weights.iter().map(|&w| BoxCoxDequantizer::encode_fp16(w)).collect();
+                    WeightBuffer::Fp16 { raw: raw_fp16, scale: meta.scale }
+                }
+                PrecisionFormat::Posit8 => {
+                    let raw_p8: Vec<u8> = weights.iter().map(|&w| (BoxCoxDequantizer::encode_posit16(w) >> 8) as u8).collect();
+                    WeightBuffer::Posit8 { raw: raw_p8, scale: meta.scale }
+                }
+                PrecisionFormat::Int8 => {
+                    let raw_i8: Vec<i8> = weights.iter().map(|&w| (w / meta.scale.max(1e-6) * 127.0).round().clamp(-128.0, 127.0) as i8).collect();
+                    WeightBuffer::Int8 { weights: raw_i8, scale: meta.scale }
+                }
+                _ => WeightBuffer::Fp32 { weights: weights.clone() },
+            };
+
             cache.insert(LoadedLayer {
                 name: name.clone(),
                 shape: meta.shape.clone(),
@@ -221,6 +294,7 @@ impl WeightLoader {
                 format,
                 weights,
                 packed_weights,
+                buffer,
             });
         }
 
@@ -234,4 +308,90 @@ impl WeightLoader {
             .map_err(|e| format!("Failed to parse embedded ternary manifest: {e}"))?;
         Self::load_from_manifest(&manifest, EMBEDDED_SLICE_0_TERNARY, QualityTier::Ternary158)
     }
+
+    /// Deserializes model weights directly from standard Hugging Face SafeTensors byte buffer
+    pub fn load_safetensors_bytes(bytes: &[u8], tier: QualityTier) -> Result<WeightCache, String> {
+        use safetensors::{Dtype, SafeTensors};
+
+        let tensors = SafeTensors::deserialize(bytes)
+            .map_err(|e| format!("SafeTensors deserialization error: {e}"))?;
+        let mut cache = WeightCache::new();
+
+        for (name, view) in tensors.tensors() {
+            let shape = view.shape().to_vec();
+            let dtype = view.dtype();
+            let data = view.data();
+
+            let (format, weights, packed_weights, buffer) = match dtype {
+                Dtype::F32 => {
+                    let f32_slice: &[f32] = bytemuck::cast_slice(data);
+                    let w_vec = f32_slice.to_vec();
+                    (PrecisionFormat::Fp32, w_vec.clone(), Vec::new(), WeightBuffer::Fp32 { weights: w_vec })
+                }
+                Dtype::F16 => {
+                    let u16_slice: &[u16] = bytemuck::cast_slice(data);
+                    let decoded: Vec<f32> = u16_slice
+                        .iter()
+                        .map(|&bits| BoxCoxDequantizer::decode_fp16(bits))
+                        .collect();
+                    (PrecisionFormat::Fp16, decoded, Vec::new(), WeightBuffer::Fp16 { raw: u16_slice.to_vec(), scale: 1.0 })
+                }
+                Dtype::BF16 => {
+                    let u16_slice: &[u16] = bytemuck::cast_slice(data);
+                    let decoded: Vec<f32> = u16_slice
+                        .iter()
+                        .map(|&bits| BoxCoxDequantizer::decode_bf16(bits))
+                        .collect();
+                    (PrecisionFormat::Bf16, decoded, Vec::new(), WeightBuffer::Bf16 { raw: u16_slice.to_vec(), scale: 1.0 })
+                }
+                Dtype::I8 => {
+                    let i8_slice: &[i8] = bytemuck::cast_slice(data);
+                    let is_ternary = i8_slice.iter().all(|&v| v == -1 || v == 0 || v == 1);
+                    if is_ternary {
+                        let packed = Self::pack_ternary_2bit(i8_slice);
+                        let f32_weights: Vec<f32> = i8_slice.iter().map(|&v| v as f32).collect();
+                        (PrecisionFormat::Ternary158, f32_weights, packed.clone(), WeightBuffer::Ternary2Bit { packed, gamma: 1.0 })
+                    } else {
+                        let decoded: Vec<f32> = i8_slice.iter().map(|&v| v as f32 / 127.0).collect();
+                        (PrecisionFormat::Int8, decoded, Vec::new(), WeightBuffer::Int8 { weights: i8_slice.to_vec(), scale: 1.0 })
+                    }
+                }
+                Dtype::U8 => {
+                    let num_elements = shape.iter().product();
+                    let unpacked = Self::unpack_ternary_2bit(data, num_elements);
+                    let f32_weights: Vec<f32> = unpacked.iter().map(|&v| v as f32).collect();
+                    (PrecisionFormat::Ternary158, f32_weights, data.to_vec(), WeightBuffer::Ternary2Bit { packed: data.to_vec(), gamma: 1.0 })
+                }
+                _ => {
+                    return Err(format!(
+                        "Unsupported SafeTensors dtype {dtype:?} for tensor {name}"
+                    ));
+                }
+            };
+
+            cache.insert(LoadedLayer {
+                name,
+                shape,
+                scale: 1.0,
+                format,
+                weights,
+                packed_weights,
+                buffer,
+            });
+        }
+
+        cache.active_tier = Some(tier);
+        Ok(cache)
+    }
+
+    /// Loads model weights directly from a SafeTensors file on disk
+    pub fn load_safetensors_file(
+        path: &std::path::Path,
+        tier: QualityTier,
+    ) -> Result<WeightCache, String> {
+        let bytes = std::fs::read(path)
+            .map_err(|e| format!("Failed to read SafeTensors file at {path:?}: {e}"))?;
+        Self::load_safetensors_bytes(&bytes, tier)
+    }
 }
+

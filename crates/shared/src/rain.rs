@@ -274,6 +274,19 @@ pub struct EngineTelemetry {
     pub active_stress_profile: String,
     pub diffusion_bypassed: bool,
     pub ambisonic_order_reduced: bool,
+    pub thinking_steps: usize,
+    pub consistency_jump_active: bool,
+    pub dynamic_buffer_bytes: usize,
+    pub buffer_health_ratio: f32,
+    pub user_thinking_steps_override: bool,
+    pub is_offline_export_mode: bool,
+    pub history_seconds_available: f32,
+    pub env_max_buffer_bytes: usize,
+    pub buffer_capacity_ms: f32,
+    pub buffer_resize_cooldown: f32,
+    pub quant_macro_cooldown: f32,
+    pub buffer_resizes_count: usize,
+    pub quant_swaps_count: usize,
 }
 
 impl Default for EngineTelemetry {
@@ -298,6 +311,38 @@ impl Default for EngineTelemetry {
             active_stress_profile: "0: Nominal Desktop (Pristine)".into(),
             diffusion_bypassed: false,
             ambisonic_order_reduced: false,
+            thinking_steps: 3,
+            consistency_jump_active: false,
+            dynamic_buffer_bytes: 34560,
+            buffer_health_ratio: 1.0,
+            user_thinking_steps_override: false,
+            is_offline_export_mode: false,
+            history_seconds_available: 0.0,
+            env_max_buffer_bytes: 65536,
+            buffer_capacity_ms: 45.0,
+            buffer_resize_cooldown: 2.0,
+            quant_macro_cooldown: 15.0,
+            buffer_resizes_count: 0,
+            quant_swaps_count: 0,
+        }
+    }
+}
+
+/// Interception and mediation mode for the Meta-Controller
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum MetaControllerInterceptionMode {
+    #[default]
+    MediatedLive,       // Live play: Smooths intent, enforces physical limits & thermal headroom
+    DirectBypass,       // Direct raw parameter application without governor intervention
+    OfflineMaxQuality,  // Non-realtime export: Latency budget = inf, Headroom = 100%, Max Fidelity
+}
+
+impl MetaControllerInterceptionMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::MediatedLive => "Meta-Controller Mediated (Live Acoustic Physics)",
+            Self::DirectBypass => "Direct Parameter Control (Manual Raw Bypass)",
+            Self::OfflineMaxQuality => "Offline Master Quality (Unlimited Headroom, K=5)",
         }
     }
 }
@@ -463,11 +508,51 @@ impl NoiseColor {
     }
 }
 
+/// Core audio synthesis engine generator mode
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum SynthesisMode {
+    #[default]
+    NeuralAi,
+    PhysicalSynth,
+    ProceduralFilterbank,
+    HybridAdaptive,
+}
+
+impl SynthesisMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::NeuralAi => "Neural AI (Mamba2-MoE + VAE)",
+            Self::PhysicalSynth => "Physical Fluid Dynamics (Synth-Rain)",
+            Self::ProceduralFilterbank => "Subtractive Procedural (16-Band)",
+            Self::HybridAdaptive => "Hybrid Adaptive (Governor Dynamic Blend)",
+        }
+    }
+
+    pub fn short_label(self) -> &'static str {
+        match self {
+            Self::NeuralAi => "Neural AI",
+            Self::PhysicalSynth => "Synth-Rain",
+            Self::ProceduralFilterbank => "Procedural",
+            Self::HybridAdaptive => "Hybrid",
+        }
+    }
+
+    pub fn description(self) -> &'static str {
+        match self {
+            Self::NeuralAi => "Recurrent Mamba-2 SSM + Spatial VAE DDSP generative soundscape synthesis.",
+            Self::PhysicalSynth => "Physical acoustic simulation of Gunn-Kinzer droplet velocities, Ulbrich DSD, and impact cavitation.",
+            Self::ProceduralFilterbank => "16-band resonant subtractive filterbank with colored noise shaping (zero latency).",
+            Self::HybridAdaptive => "Autonomous governor dynamically blending Neural and Procedural/Physical engines based on compute headroom.",
+        }
+    }
+}
+
 /// Complete RainAI engine state
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct RainState {
     pub is_playing: bool,
     pub master_volume: f32,
+    pub synthesis_mode: SynthesisMode,
     pub quality_tier: QualityTier,
     pub noise_color: NoiseColor,
     pub evolve_enabled: bool,
@@ -481,8 +566,26 @@ pub struct RainState {
     pub preferred_format: Option<String>,
     pub optimization_profile: GovernorOptimizationProfile,
     pub stress_profile: HardwareStressProfile,
+    #[serde(default = "default_thinking_steps")]
+    pub thinking_steps: usize,
+    #[serde(default)]
+    pub use_consistency_jump: bool,
+    #[serde(default)]
+    pub user_thinking_steps: Option<usize>,
+    #[serde(default)]
+    pub meta_mediation_mode: MetaControllerInterceptionMode,
+    #[serde(default = "default_true")]
+    pub history_recording_enabled: bool,
     #[serde(skip)]
     pub telemetry: EngineTelemetry,
+}
+
+fn default_thinking_steps() -> usize {
+    3
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for RainState {
@@ -490,6 +593,7 @@ impl Default for RainState {
         Self {
             is_playing: false,
             master_volume: 0.8,
+            synthesis_mode: SynthesisMode::NeuralAi,
             quality_tier: QualityTier::AdaptiveMinimum,
             noise_color: NoiseColor::Pink,
             evolve_enabled: true,
@@ -503,6 +607,11 @@ impl Default for RainState {
             preferred_format: None,
             optimization_profile: GovernorOptimizationProfile::default(),
             stress_profile: HardwareStressProfile::default(),
+            thinking_steps: 3,
+            use_consistency_jump: false,
+            user_thinking_steps: None,
+            meta_mediation_mode: MetaControllerInterceptionMode::default(),
+            history_recording_enabled: true,
             telemetry: EngineTelemetry::default(),
         }
     }

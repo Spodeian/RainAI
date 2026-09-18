@@ -371,3 +371,26 @@ pub fn trigger_binary_download(filename: &str, bytes: &[u8], mime_type: &str) {
         }
     }
 }
+
+/// Control browser Screen Wake Lock API to prevent mobile sleep during playback
+pub fn set_screen_wake_lock(active: bool) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Some(window) = web_sys::window() {
+            if let Ok(func) = js_sys::Reflect::get(
+                &window,
+                &wasm_bindgen::JsValue::from_str("__setWakeLock"),
+            ) {
+                if let Some(func) = func.dyn_ref::<js_sys::Function>() {
+                    let arg = wasm_bindgen::JsValue::from_bool(active);
+                    let _ = func.call1(&window, &arg);
+                }
+            }
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = active;
+    }
+}
+

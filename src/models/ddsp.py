@@ -241,8 +241,11 @@ class DifferentiableReverbEngine(nn.Module):
         
         # 3. Formulate RIR: initial direct delta impulse + diffuse decay tail
         rir = self.diffuse_noise * combined_env # (batch, 4, ir_samples)
-        # Inject direct path peak at sample 0
-        rir[:, :, 0] = rir[:, :, 0] + 1.0
+        
+        # Inject direct path peak at sample 0 safely without in-place modification
+        delta = torch.zeros_like(rir)
+        delta[:, :, 0] = 1.0
+        rir = rir + delta
         
         # Normalize RIR energy
         rir = rir / (torch.norm(rir, dim=-1, keepdim=True) + 1e-8)

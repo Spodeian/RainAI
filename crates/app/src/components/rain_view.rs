@@ -1,11 +1,10 @@
-//! RainAI Studio interactive UI view with Macro-to-Micro controls and 3D Ambisonic radar.
-
 use audio::decoder::DecodeMode;
 use audio::export::render_wav_stream;
+use audio::SharedAudioState;
 use eframe::egui::{self, Color32, Pos2, Stroke, Vec2};
 use shared::{
-    GovernorOptimizationProfile, HardwareStressProfile, NoiseColor, QualityTier, RainState,
-    WeatherPreset,
+    GovernorOptimizationProfile, HardwareStressProfile, MetaControllerInterceptionMode,
+    NoiseColor, QualityTier, RainState, SynthesisMode, WeatherPreset,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -107,7 +106,7 @@ impl Default for RainView {
 }
 
 impl RainView {
-    pub fn render(&mut self, ui: &mut egui::Ui, rain: &mut RainState) {
+    pub fn render(&mut self, ui: &mut egui::Ui, rain: &mut RainState, audio_state: Option<&SharedAudioState>) {
         // Step procedural drift if evolve is on
         rain.step_procedural_drift(ui.input(|i| i.stable_dt).min(0.1));
 
@@ -157,8 +156,8 @@ impl RainView {
                 RainTab::Surfaces => self.render_surfaces_tab(ui, rain),
                 RainTab::SpatialSounds => self.render_spatial_sounds_tab(ui, rain),
                 RainTab::Presets => self.render_presets_tab(ui, rain),
-                RainTab::Export => self.render_export_tab(ui, rain),
-                RainTab::Telemetry => self.render_telemetry_tab(ui, rain),
+                RainTab::Export => self.render_export_tab(ui, rain, audio_state),
+                RainTab::Telemetry => self.render_telemetry_tab(ui, rain, audio_state),
             }
         });
 
@@ -211,6 +210,8 @@ impl RainView {
                             // Playback State
                             cond[27] = if rain.is_playing { 1.0 } else { 0.0 };
                             cond[28] = rain.master_volume;
+                            cond[29] = rain.thinking_steps as f32;
+                            cond[30] = if rain.use_consistency_jump { 1.0 } else { 0.0 };
                             
                             // Bulk copy into the SharedArrayBuffer memory (Zero-lock transfer to AudioWorklet)
                             telemetry_array.copy_from(&cond);
@@ -278,6 +279,19 @@ impl RainView {
                     ui.selectable_value(&mut self.decode_mode, DecodeMode::StereoSpeakers, DecodeMode::StereoSpeakers.label());
                     ui.selectable_value(&mut self.decode_mode, DecodeMode::Surround71, DecodeMode::Surround71.label());
                     ui.selectable_value(&mut self.decode_mode, DecodeMode::RawFoaPassthrough, DecodeMode::RawFoaPassthrough.label());
+                });
+
+            ui.add_space(8.0);
+
+            // Synthesis Engine Dropdown
+            ui.label("Engine:");
+            egui::ComboBox::from_id_salt("synthesis_mode_selector")
+                .selected_text(rain.synthesis_mode.short_label())
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut rain.synthesis_mode, SynthesisMode::NeuralAi, SynthesisMode::NeuralAi.label());
+                    ui.selectable_value(&mut rain.synthesis_mode, SynthesisMode::PhysicalSynth, SynthesisMode::PhysicalSynth.label());
+                    ui.selectable_value(&mut rain.synthesis_mode, SynthesisMode::ProceduralFilterbank, SynthesisMode::ProceduralFilterbank.label());
+                    ui.selectable_value(&mut rain.synthesis_mode, SynthesisMode::HybridAdaptive, SynthesisMode::HybridAdaptive.label());
                 });
 
             ui.add_space(8.0);
@@ -386,7 +400,7 @@ impl RainView {
     }
 
     fn render_tabs(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.selectable_value(&mut self.current_tab, RainTab::Weather, "🌧 Weather & Wind");
             ui.selectable_value(&mut self.current_tab, RainTab::Surfaces, "🪨 Surface Mixer");
             ui.selectable_value(&mut self.current_tab, RainTab::SpatialSounds, "🧭 Spatial Radar");
@@ -397,8 +411,10 @@ impl RainView {
     }
 
     fn render_weather_tab(&mut self, ui: &mut egui::Ui, rain: &mut RainState) {
-        ui.columns(2, |cols| {
-            cols[0].group(|ui| {
+        let is_mobile = ui.available_width() < 650.0;
+
+        let render_col0 = |ui: &mut egui::Ui, rain: &mut RainState| {
+            ui.group(|ui| {
                 ui.heading("Acoustic Atmosphere & Intensity");
                 ui.add_space(6.0);
 
@@ -417,8 +433,10 @@ impl RainView {
                 ui.label("Rainfall Pitch / Angle");
                 ui.add(egui::Slider::new(&mut rain.weather.pitch_angle, 0.0..=1.0));
             });
+        };
 
-            cols[1].group(|ui| {
+        let render_col1 = |ui: &mut egui::Ui, rain: &mut RainState| {
+            ui.group(|ui| {
                 ui.heading("Fluid Wind Dynamics");
                 ui.add_space(6.0);
 
@@ -436,7 +454,7 @@ impl RainView {
 
                 ui.add_space(10.0);
                 ui.label(egui::RichText::new("Macro Weather Preset Actions").strong());
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     if ui.button("⚡ Heavy Downpour").clicked() {
                         rain.weather.intensity = 0.9;
                         rain.wind.speed = 0.7;
@@ -449,7 +467,18 @@ impl RainView {
                     }
                 });
             });
-        });
+        };
+
+        if is_mobile {
+            render_col0(ui, rain);
+            ui.add_space(8.0);
+            render_col1(ui, rain);
+        } else {
+            ui.columns(2, |cols| {
+                render_col0(&mut cols[0], rain);
+                render_col1(&mut cols[1], rain);
+            });
+        }
     }
 
     fn render_surfaces_tab(&mut self, ui: &mut egui::Ui, rain: &mut RainState) {
@@ -458,9 +487,10 @@ impl RainView {
         ui.add_space(8.0);
 
         let normalized = rain.surfaces.normalized();
+        let is_mobile = ui.available_width() < 650.0;
 
-        ui.columns(3, |cols| {
-            cols[0].group(|ui| {
+        let render_col0 = |ui: &mut egui::Ui, rain: &mut RainState| {
+            ui.group(|ui| {
                 ui.label(format!("Corrugated Tin ({:.0}%)", normalized[0] * 100.0));
                 ui.add(egui::Slider::new(&mut rain.surfaces.tin, 0.0..=1.0));
 
@@ -470,8 +500,10 @@ impl RainView {
                 ui.label(format!("Pine Needles ({:.0}%)", normalized[2] * 100.0));
                 ui.add(egui::Slider::new(&mut rain.surfaces.pine_needles, 0.0..=1.0));
             });
+        };
 
-            cols[1].group(|ui| {
+        let render_col1 = |ui: &mut egui::Ui, rain: &mut RainState| {
+            ui.group(|ui| {
                 ui.label(format!("Urban Asphalt Pavement ({:.0}%)", normalized[3] * 100.0));
                 ui.add(egui::Slider::new(&mut rain.surfaces.pavement, 0.0..=1.0));
 
@@ -481,8 +513,10 @@ impl RainView {
                 ui.label(format!("Shallow Puddles ({:.0}%)", normalized[5] * 100.0));
                 ui.add(egui::Slider::new(&mut rain.surfaces.puddle_shallow, 0.0..=1.0));
             });
+        };
 
-            cols[2].group(|ui| {
+        let render_col2 = |ui: &mut egui::Ui, rain: &mut RainState| {
+            ui.group(|ui| {
                 ui.label(format!("Canvas Tent ({:.0}%)", normalized[6] * 100.0));
                 ui.add(egui::Slider::new(&mut rain.surfaces.canvas_tent, 0.0..=1.0));
 
@@ -492,216 +526,250 @@ impl RainView {
                 ui.label(format!("Wood Decking ({:.0}%)", normalized[8] * 100.0));
                 ui.add(egui::Slider::new(&mut rain.surfaces.wood_deck, 0.0..=1.0));
             });
+        };
+
+        if is_mobile {
+            render_col0(ui, rain);
+            ui.add_space(8.0);
+            render_col1(ui, rain);
+            ui.add_space(8.0);
+            render_col2(ui, rain);
+        } else {
+            ui.columns(3, |cols| {
+                render_col0(&mut cols[0], rain);
+                render_col1(&mut cols[1], rain);
+                render_col2(&mut cols[2], rain);
+            });
+        }
+    }
+
+    fn render_spatial_side_sounds(&mut self, ui: &mut egui::Ui, rain: &mut RainState) {
+        ui.group(|ui| {
+            ui.heading("Side Sounds Layer Mix");
+            ui.add_space(6.0);
+
+            ui.label("🔥 Fireplace Intensity");
+            ui.add(egui::Slider::new(&mut rain.side_sounds.fireplace_intensity, 0.0..=1.0));
+            ui.horizontal(|ui| {
+                ui.label("Crackle Rate:");
+                ui.add(egui::Slider::new(&mut rain.side_sounds.fireplace_crackle_rate, 0.0..=1.0).show_value(false));
+            });
+
+            ui.separator();
+
+            ui.label("⚡ Thunder Proximity");
+            ui.add(egui::Slider::new(&mut rain.side_sounds.thunder_proximity, 0.0..=1.0));
+            ui.horizontal(|ui| {
+                ui.label("Rumble Tail:");
+                ui.add(egui::Slider::new(&mut rain.side_sounds.thunder_rumble_length, 0.0..=1.0).show_value(false));
+            });
+
+            ui.separator();
+
+            ui.label("🦗 Insects (Cicadas/Crickets)");
+            ui.add(egui::Slider::new(&mut rain.side_sounds.insect_density, 0.0..=1.0));
+
+            ui.label("🐦 Birds Activity");
+            ui.add(egui::Slider::new(&mut rain.side_sounds.bird_activity, 0.0..=1.0));
+
+            ui.separator();
+
+            ui.label("🚗 Wet Road Traffic Distance");
+            ui.add(egui::Slider::new(&mut rain.side_sounds.traffic_distance, 0.0..=1.0));
+
+            ui.add_space(8.0);
+            ui.label("Head Orientation / Listener Yaw:");
+            ui.add(egui::Slider::new(&mut self.listener_yaw, -std::f32::consts::PI..=std::f32::consts::PI)
+                .custom_formatter(|v, _| format!("{:.0}°", v.to_degrees())));
+        });
+    }
+
+    fn render_spatial_radar(&mut self, ui: &mut egui::Ui, rain: &mut RainState) {
+        ui.group(|ui| {
+            ui.heading("3D Ambisonic Soundfield Radar");
+            ui.label("Interactive spatial positioning of sources around the listener");
+            ui.add_space(8.0);
+
+            let (response, painter) = ui.allocate_painter(Vec2::new(260.0, 260.0), egui::Sense::click_and_drag());
+            let center = response.rect.center();
+            let radius = 110.0;
+
+            // Handle interactive click-and-drag source and yaw positioning
+            if response.drag_started() {
+                if let Some(pos) = response.interact_pointer_pos() {
+                    let dx = pos.x - center.x;
+                    let dy = pos.y - center.y;
+                    let dist = (dx * dx + dy * dy).sqrt();
+
+                    let is_near = |azim: f32, d: f32| -> bool {
+                        let angle = azim * std::f32::consts::PI - self.listener_yaw;
+                        let r = d.clamp(0.15, 1.0) * radius;
+                        let spos = Pos2::new(center.x + r * angle.sin(), center.y - r * angle.cos());
+                        (spos.x - pos.x).hypot(spos.y - pos.y) < 22.0
+                    };
+
+                    if rain.side_sounds.fireplace_intensity > 0.05 && is_near(rain.side_sounds.fireplace_azimuth, 0.45) {
+                        self.dragged_source = Some(RadarDragSource::Fireplace);
+                    } else if rain.side_sounds.thunder_proximity > 0.05 && is_near(rain.side_sounds.thunder_azimuth, 0.90) {
+                        self.dragged_source = Some(RadarDragSource::Thunder);
+                    } else if rain.side_sounds.insect_density > 0.05 && is_near(rain.side_sounds.insect_azimuth, rain.side_sounds.insect_proximity) {
+                        self.dragged_source = Some(RadarDragSource::Insect);
+                    } else if rain.side_sounds.bird_activity > 0.05 && is_near(-0.4, rain.side_sounds.bird_proximity) {
+                        self.dragged_source = Some(RadarDragSource::Bird);
+                    } else if dist > radius * 0.75 {
+                        self.dragged_source = Some(RadarDragSource::ListenerYaw);
+                    } else {
+                        self.dragged_source = None;
+                    }
+                }
+            } else if response.drag_stopped() {
+                self.dragged_source = None;
+            }
+
+            if response.dragged() {
+                if let Some(pos) = response.interact_pointer_pos() {
+                    let dx = pos.x - center.x;
+                    let dy = pos.y - center.y;
+                    let dist = ((dx * dx + dy * dy).sqrt() / radius).clamp(0.15, 1.0);
+                    let screen_angle = dx.atan2(-dy);
+                    let unrotated_azim = (screen_angle + self.listener_yaw) / std::f32::consts::PI;
+                    let norm_azim = ((unrotated_azim + 1.0).rem_euclid(2.0)) - 1.0;
+
+                    match self.dragged_source {
+                        Some(RadarDragSource::Fireplace) => {
+                            rain.side_sounds.fireplace_azimuth = norm_azim;
+                        }
+                        Some(RadarDragSource::Thunder) => {
+                            rain.side_sounds.thunder_azimuth = norm_azim;
+                        }
+                        Some(RadarDragSource::Insect) => {
+                            rain.side_sounds.insect_azimuth = norm_azim;
+                            rain.side_sounds.insect_proximity = dist;
+                        }
+                        Some(RadarDragSource::Bird) => {
+                            rain.side_sounds.bird_proximity = dist;
+                        }
+                        Some(RadarDragSource::ListenerYaw) => {
+                            self.listener_yaw = screen_angle;
+                        }
+                        None => {}
+                    }
+                }
+            }
+
+            // Radar background
+            painter.circle_filled(center, radius, Color32::from_rgb(14, 18, 26));
+            painter.circle_stroke(center, radius, Stroke::new(1.5, Color32::from_rgb(45, 60, 85)));
+            painter.circle_stroke(center, radius * 0.66, Stroke::new(1.0, Color32::from_rgb(35, 45, 65)));
+            painter.circle_stroke(center, radius * 0.33, Stroke::new(1.0, Color32::from_rgb(35, 45, 65)));
+
+            // Crosshairs
+            painter.line_segment([Pos2::new(center.x - radius, center.y), Pos2::new(center.x + radius, center.y)], Stroke::new(1.0, Color32::from_rgb(35, 45, 65)));
+            painter.line_segment([Pos2::new(center.x, center.y - radius), Pos2::new(center.x, center.y + radius)], Stroke::new(1.0, Color32::from_rgb(35, 45, 65)));
+
+            // WebGPU Droplet Particle Dynamics (matching droplet_panning.wgsl)
+            if self.enable_gpu_radar || (rain.is_playing && rain.weather.intensity > 0.05) {
+                ui.ctx().request_repaint();
+                let t = rain.drift_time;
+                let wind_x = rain.wind.speed * 0.7 + rain.wind.turbulence * 0.3;
+                let wind_y = rain.wind.speed * 0.3 * (1.0 + rain.wind.gustiness);
+
+                let particle_count = if self.enable_gpu_radar { 96 } else { 28 };
+                for i in 0..particle_count {
+                    let fi = i as f32;
+                    let seed = (fi * 137.5).to_radians();
+                    // Aerodynamic Gunn-Kinzer terminal velocity vt(D) = 9.65 - 10.3 * exp(-0.6 * D)
+                    let diameter_mm = 0.5 + (seed.sin().abs() * 4.0);
+                    let vt = (9.65 - 10.3 * (-0.6 * diameter_mm).exp()).max(0.8);
+                    let theta_traj = (wind_x / vt).atan();
+
+                    let phase = (t * (0.5 + 0.3 * (vt / 9.0)) + (fi * (1.0 / particle_count as f32))) % 1.0;
+                    let spawn_r = (seed * 2.718).sin().abs() * radius * 0.92;
+                    let base_x = center.x + spawn_r * seed.cos() + (phase * theta_traj.sin() * 32.0);
+                    let base_y = (center.y - radius) + (phase * (radius * 2.0 + 16.0)) + (wind_y * 8.0);
+
+                    let drop_pos = Pos2::new(base_x, base_y);
+                    let dist_from_center = (drop_pos.x - center.x).hypot(drop_pos.y - center.y);
+
+                    if dist_from_center <= radius {
+                        let drop_alpha = ((1.0 - phase) * 160.0 * rain.weather.intensity) as u8;
+                        let trail_start = Pos2::new(drop_pos.x - wind_x * 3.5, drop_pos.y - 5.0);
+                        painter.line_segment(
+                            [trail_start, drop_pos],
+                            Stroke::new(1.2, Color32::from_rgba_unmultiplied(130, 205, 255, drop_alpha)),
+                        );
+
+                        if phase > 0.82 {
+                            let ripple_phase = (phase - 0.82) / 0.18;
+                            let ripple_r = (ripple_phase * 12.0).max(2.0);
+                            let ripple_alpha = ((1.0 - ripple_phase) * 90.0 * rain.weather.intensity) as u8;
+                            painter.circle_stroke(
+                                drop_pos,
+                                ripple_r,
+                                Stroke::new(1.0, Color32::from_rgba_unmultiplied(100, 190, 255, ripple_alpha)),
+                            );
+                        }
+                    }
+                }
+            }
+
+            // Rain droplet concentric ripples on radar
+            if rain.is_playing && rain.weather.intensity > 0.05 {
+                let t = rain.drift_time * 4.0;
+                let r1 = ((t % 1.0) * radius * 0.8).max(5.0);
+                let alpha = ((1.0 - (t % 1.0)) * 60.0 * rain.weather.intensity) as u8;
+                painter.circle_stroke(center, r1, Stroke::new(1.0, Color32::from_rgba_unmultiplied(100, 180, 255, alpha)));
+            }
+
+            // Center listener with head orientation indicator
+            painter.circle_filled(center, 6.0, Color32::from_rgb(100, 200, 255));
+            let head_dir = Pos2::new(
+                center.x + 14.0 * self.listener_yaw.sin(),
+                center.y - 14.0 * self.listener_yaw.cos(),
+            );
+            painter.line_segment([center, head_dir], Stroke::new(2.0, Color32::WHITE));
+            painter.text(Pos2::new(center.x, center.y - 14.0), egui::Align2::CENTER_CENTER, "You", egui::FontId::proportional(11.0), Color32::WHITE);
+
+            // Draw source positions
+            let draw_source = |painter: &egui::Painter, azimuth: f32, dist: f32, icon: &str, active: bool, color: Color32| {
+                if !active {
+                    return;
+                }
+                let angle = azimuth * std::f32::consts::PI - self.listener_yaw;
+                let r = dist.clamp(0.15, 1.0) * radius;
+                let pos = Pos2::new(center.x + r * angle.sin(), center.y - r * angle.cos());
+                painter.circle_filled(pos, 5.0, color);
+                painter.text(pos, egui::Align2::CENTER_CENTER, icon, egui::FontId::proportional(14.0), Color32::WHITE);
+            };
+
+            draw_source(&painter, rain.side_sounds.fireplace_azimuth, 0.45, "🔥", rain.side_sounds.fireplace_intensity > 0.05, Color32::from_rgb(255, 140, 40));
+            draw_source(&painter, rain.side_sounds.thunder_azimuth, 0.90, "⚡", rain.side_sounds.thunder_proximity > 0.05, Color32::from_rgb(255, 230, 80));
+            draw_source(&painter, rain.side_sounds.insect_azimuth, rain.side_sounds.insect_proximity, "🦗", rain.side_sounds.insect_density > 0.05, Color32::from_rgb(120, 220, 80));
+            draw_source(&painter, -0.4, rain.side_sounds.bird_proximity, "🐦", rain.side_sounds.bird_activity > 0.05, Color32::from_rgb(80, 180, 255));
+
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut self.enable_gpu_radar, "⚡ WebGPU Shader Pipeline");
+                if self.enable_gpu_radar {
+                    let _uniforms = DropletPanningUniforms::from_rain(rain, self.listener_yaw, 260.0, 260.0);
+                    ui.colored_label(Color32::from_rgb(100, 240, 160), "droplet_panning.wgsl active (96 aerodynamic GPU particles)");
+                }
+            });
         });
     }
 
     fn render_spatial_sounds_tab(&mut self, ui: &mut egui::Ui, rain: &mut RainState) {
-        ui.columns(2, |cols| {
-            cols[0].vertical(|ui| {
-                ui.heading("Side Sounds Layer Mix");
-                ui.add_space(6.0);
-
-                ui.label("🔥 Fireplace Intensity");
-                ui.add(egui::Slider::new(&mut rain.side_sounds.fireplace_intensity, 0.0..=1.0));
-                ui.horizontal(|ui| {
-                    ui.label("Crackle Rate:");
-                    ui.add(egui::Slider::new(&mut rain.side_sounds.fireplace_crackle_rate, 0.0..=1.0).show_value(false));
-                });
-
-                ui.separator();
-
-                ui.label("⚡ Thunder Proximity");
-                ui.add(egui::Slider::new(&mut rain.side_sounds.thunder_proximity, 0.0..=1.0));
-                ui.horizontal(|ui| {
-                    ui.label("Rumble Tail:");
-                    ui.add(egui::Slider::new(&mut rain.side_sounds.thunder_rumble_length, 0.0..=1.0).show_value(false));
-                });
-
-                ui.separator();
-
-                ui.label("🦗 Insects (Cicadas/Crickets)");
-                ui.add(egui::Slider::new(&mut rain.side_sounds.insect_density, 0.0..=1.0));
-
-                ui.label("🐦 Birds Activity");
-                ui.add(egui::Slider::new(&mut rain.side_sounds.bird_activity, 0.0..=1.0));
-
-                ui.separator();
-
-                ui.label("🚗 Wet Road Traffic Distance");
-                ui.add(egui::Slider::new(&mut rain.side_sounds.traffic_distance, 0.0..=1.0));
-
-                ui.add_space(8.0);
-                ui.label("Head Orientation / Listener Yaw:");
-                ui.add(egui::Slider::new(&mut self.listener_yaw, -std::f32::consts::PI..=std::f32::consts::PI)
-                    .custom_formatter(|v, _| format!("{:.0}°", v.to_degrees())));
+        let is_mobile = ui.available_width() < 650.0;
+        if is_mobile {
+            self.render_spatial_side_sounds(ui, rain);
+            ui.add_space(8.0);
+            self.render_spatial_radar(ui, rain);
+        } else {
+            ui.columns(2, |cols| {
+                self.render_spatial_side_sounds(&mut cols[0], rain);
+                self.render_spatial_radar(&mut cols[1], rain);
             });
-
-            cols[1].vertical(|ui| {
-                ui.heading("3D Ambisonic Soundfield Radar");
-                ui.label("Interactive spatial positioning of sources around the listener");
-                ui.add_space(8.0);
-
-                let (response, painter) = ui.allocate_painter(Vec2::new(260.0, 260.0), egui::Sense::click_and_drag());
-                let center = response.rect.center();
-                let radius = 110.0;
-
-                // Handle interactive click-and-drag source and yaw positioning
-                if response.drag_started() {
-                    if let Some(pos) = response.interact_pointer_pos() {
-                        let dx = pos.x - center.x;
-                        let dy = pos.y - center.y;
-                        let dist = (dx * dx + dy * dy).sqrt();
-
-                        let is_near = |azim: f32, d: f32| -> bool {
-                            let angle = azim * std::f32::consts::PI - self.listener_yaw;
-                            let r = d.clamp(0.15, 1.0) * radius;
-                            let spos = Pos2::new(center.x + r * angle.sin(), center.y - r * angle.cos());
-                            (spos.x - pos.x).hypot(spos.y - pos.y) < 22.0
-                        };
-
-                        if rain.side_sounds.fireplace_intensity > 0.05 && is_near(rain.side_sounds.fireplace_azimuth, 0.45) {
-                            self.dragged_source = Some(RadarDragSource::Fireplace);
-                        } else if rain.side_sounds.thunder_proximity > 0.05 && is_near(rain.side_sounds.thunder_azimuth, 0.90) {
-                            self.dragged_source = Some(RadarDragSource::Thunder);
-                        } else if rain.side_sounds.insect_density > 0.05 && is_near(rain.side_sounds.insect_azimuth, rain.side_sounds.insect_proximity) {
-                            self.dragged_source = Some(RadarDragSource::Insect);
-                        } else if rain.side_sounds.bird_activity > 0.05 && is_near(-0.4, rain.side_sounds.bird_proximity) {
-                            self.dragged_source = Some(RadarDragSource::Bird);
-                        } else if dist > radius * 0.75 {
-                            self.dragged_source = Some(RadarDragSource::ListenerYaw);
-                        } else {
-                            self.dragged_source = None;
-                        }
-                    }
-                } else if response.drag_stopped() {
-                    self.dragged_source = None;
-                }
-
-                if response.dragged() {
-                    if let Some(pos) = response.interact_pointer_pos() {
-                        let dx = pos.x - center.x;
-                        let dy = pos.y - center.y;
-                        let dist = ((dx * dx + dy * dy).sqrt() / radius).clamp(0.15, 1.0);
-                        let screen_angle = dx.atan2(-dy);
-                        let unrotated_azim = (screen_angle + self.listener_yaw) / std::f32::consts::PI;
-                        let norm_azim = ((unrotated_azim + 1.0).rem_euclid(2.0)) - 1.0;
-
-                        match self.dragged_source {
-                            Some(RadarDragSource::Fireplace) => {
-                                rain.side_sounds.fireplace_azimuth = norm_azim;
-                            }
-                            Some(RadarDragSource::Thunder) => {
-                                rain.side_sounds.thunder_azimuth = norm_azim;
-                            }
-                            Some(RadarDragSource::Insect) => {
-                                rain.side_sounds.insect_azimuth = norm_azim;
-                                rain.side_sounds.insect_proximity = dist;
-                            }
-                            Some(RadarDragSource::Bird) => {
-                                rain.side_sounds.bird_proximity = dist;
-                            }
-                            Some(RadarDragSource::ListenerYaw) => {
-                                self.listener_yaw = screen_angle;
-                            }
-                            None => {}
-                        }
-                    }
-                }
-
-                // Radar background
-                painter.circle_filled(center, radius, Color32::from_rgb(14, 18, 26));
-                painter.circle_stroke(center, radius, Stroke::new(1.5, Color32::from_rgb(45, 60, 85)));
-                painter.circle_stroke(center, radius * 0.66, Stroke::new(1.0, Color32::from_rgb(35, 45, 65)));
-                painter.circle_stroke(center, radius * 0.33, Stroke::new(1.0, Color32::from_rgb(35, 45, 65)));
-
-                // Crosshairs
-                painter.line_segment([Pos2::new(center.x - radius, center.y), Pos2::new(center.x + radius, center.y)], Stroke::new(1.0, Color32::from_rgb(35, 45, 65)));
-                painter.line_segment([Pos2::new(center.x, center.y - radius), Pos2::new(center.x, center.y + radius)], Stroke::new(1.0, Color32::from_rgb(35, 45, 65)));
-
-                // WebGPU Droplet Particle Dynamics (matching droplet_panning.wgsl)
-                if self.enable_gpu_radar || (rain.is_playing && rain.weather.intensity > 0.05) {
-                    ui.ctx().request_repaint();
-                    let t = rain.drift_time;
-                    let wind_x = rain.wind.speed * 0.7 + rain.wind.turbulence * 0.3;
-                    let wind_y = rain.wind.speed * 0.3 * (1.0 + rain.wind.gustiness);
-
-                    for i in 0..28 {
-                        let fi = i as f32;
-                        let seed = (fi * 137.5).to_radians();
-                        let phase = (t * (0.6 + 0.3 * seed.sin()) + (fi * 0.0357)) % 1.0;
-                        let spawn_r = (seed * 2.718).sin().abs() * radius * 0.9;
-                        let base_x = center.x + spawn_r * seed.cos() + (phase * wind_x * 24.0);
-                        let base_y = (center.y - radius) + (phase * (radius * 2.0 + 16.0)) + (wind_y * 8.0);
-
-                        let drop_pos = Pos2::new(base_x, base_y);
-                        let dist_from_center = (drop_pos.x - center.x).hypot(drop_pos.y - center.y);
-
-                        if dist_from_center <= radius {
-                            let drop_alpha = ((1.0 - phase) * 160.0 * rain.weather.intensity) as u8;
-                            let trail_start = Pos2::new(drop_pos.x - wind_x * 3.5, drop_pos.y - 5.0);
-                            painter.line_segment(
-                                [trail_start, drop_pos],
-                                Stroke::new(1.2, Color32::from_rgba_unmultiplied(130, 205, 255, drop_alpha)),
-                            );
-
-                            if phase > 0.82 {
-                                let ripple_phase = (phase - 0.82) / 0.18;
-                                let ripple_r = (ripple_phase * 12.0).max(2.0);
-                                let ripple_alpha = ((1.0 - ripple_phase) * 90.0 * rain.weather.intensity) as u8;
-                                painter.circle_stroke(
-                                    drop_pos,
-                                    ripple_r,
-                                    Stroke::new(1.0, Color32::from_rgba_unmultiplied(100, 190, 255, ripple_alpha)),
-                                );
-                            }
-                        }
-                    }
-                }
-
-                // Rain droplet concentric ripples on radar
-                if rain.is_playing && rain.weather.intensity > 0.05 {
-                    let t = rain.drift_time * 4.0;
-                    let r1 = ((t % 1.0) * radius * 0.8).max(5.0);
-                    let alpha = ((1.0 - (t % 1.0)) * 60.0 * rain.weather.intensity) as u8;
-                    painter.circle_stroke(center, r1, Stroke::new(1.0, Color32::from_rgba_unmultiplied(100, 180, 255, alpha)));
-                }
-
-                // Center listener with head orientation indicator
-                painter.circle_filled(center, 6.0, Color32::from_rgb(100, 200, 255));
-                let head_dir = Pos2::new(
-                    center.x + 14.0 * self.listener_yaw.sin(),
-                    center.y - 14.0 * self.listener_yaw.cos(),
-                );
-                painter.line_segment([center, head_dir], Stroke::new(2.0, Color32::WHITE));
-                painter.text(Pos2::new(center.x, center.y - 14.0), egui::Align2::CENTER_CENTER, "You", egui::FontId::proportional(11.0), Color32::WHITE);
-
-                // Draw source positions
-                let draw_source = |painter: &egui::Painter, azimuth: f32, dist: f32, icon: &str, active: bool, color: Color32| {
-                    if !active {
-                        return;
-                    }
-                    let angle = azimuth * std::f32::consts::PI - self.listener_yaw;
-                    let r = dist.clamp(0.15, 1.0) * radius;
-                    let pos = Pos2::new(center.x + r * angle.sin(), center.y - r * angle.cos());
-                    painter.circle_filled(pos, 5.0, color);
-                    painter.text(pos, egui::Align2::CENTER_CENTER, icon, egui::FontId::proportional(14.0), Color32::WHITE);
-                };
-
-                draw_source(&painter, rain.side_sounds.fireplace_azimuth, 0.45, "🔥", rain.side_sounds.fireplace_intensity > 0.05, Color32::from_rgb(255, 140, 40));
-                draw_source(&painter, rain.side_sounds.thunder_azimuth, 0.90, "⚡", rain.side_sounds.thunder_proximity > 0.05, Color32::from_rgb(255, 230, 80));
-                draw_source(&painter, rain.side_sounds.insect_azimuth, rain.side_sounds.insect_proximity, "🦗", rain.side_sounds.insect_density > 0.05, Color32::from_rgb(120, 220, 80));
-                draw_source(&painter, -0.4, rain.side_sounds.bird_proximity, "🐦", rain.side_sounds.bird_activity > 0.05, Color32::from_rgb(80, 180, 255));
-
-                ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    ui.checkbox(&mut self.enable_gpu_radar, "⚡ WebGPU Shader Pipeline");
-                    if self.enable_gpu_radar {
-                        let _uniforms = DropletPanningUniforms::from_rain(rain, self.listener_yaw, 260.0, 260.0);
-                        ui.colored_label(Color32::from_rgb(100, 240, 160), "droplet_panning.wgsl active (28 simulated particles)");
-                    }
-                });
-            });
-        });
+        }
     }
 
     fn render_presets_tab(&mut self, ui: &mut egui::Ui, rain: &mut RainState) {
@@ -710,13 +778,17 @@ impl RainView {
         ui.add_space(8.0);
 
         let builtins = WeatherPreset::builtins();
+        let is_mobile = ui.available_width() < 650.0;
+        let num_cols = if is_mobile { 1 } else { 2 };
+        let card_w = if is_mobile { (ui.available_width() - 24.0).max(280.0) } else { 340.0 };
+
         egui::Grid::new("presets_grid")
-            .num_columns(2)
+            .num_columns(num_cols)
             .spacing([16.0, 12.0])
             .show(ui, |ui| {
                 for (i, preset) in builtins.into_iter().enumerate() {
                     ui.group(|ui| {
-                        ui.set_width(340.0);
+                        ui.set_width(card_w);
                         ui.heading(&preset.name);
                         ui.label(egui::RichText::new(&preset.description).italics());
                         ui.add_space(4.0);
@@ -757,19 +829,68 @@ impl RainView {
                         });
                     });
 
-                    if i % 2 == 1 {
+                    if is_mobile || i % 2 == 1 {
                         ui.end_row();
                     }
                 }
             });
     }
 
-    fn render_export_tab(&mut self, ui: &mut egui::Ui, rain: &mut RainState) {
-        ui.heading("Faster-Than-Realtime Streaming Audio Exporter");
+    fn render_export_tab(&mut self, ui: &mut egui::Ui, rain: &mut RainState, audio_state: Option<&SharedAudioState>) {
+        ui.heading("Faster-Than-Realtime Streaming Audio Exporter & Retro-Refine");
         ui.label("Export studio-quality uncompressed WAV audio. Audio is rendered in low-memory streaming chunks.");
         ui.add_space(10.0);
 
         ui.group(|ui| {
+            ui.label(egui::RichText::new("🎛️ Offline Export Mediation Mode").strong());
+            ui.horizontal_wrapped(|ui| {
+                ui.selectable_value(
+                    &mut rain.meta_mediation_mode,
+                    MetaControllerInterceptionMode::OfflineMaxQuality,
+                    "🌟 Meta-Controller Mediated (Max Quality: K=5 Thinking, 100% Neural)",
+                );
+                ui.selectable_value(
+                    &mut rain.meta_mediation_mode,
+                    MetaControllerInterceptionMode::DirectBypass,
+                    "🎯 Direct Parameter Control (Bypass Governor)",
+                );
+            });
+            if rain.meta_mediation_mode == MetaControllerInterceptionMode::OfflineMaxQuality {
+                ui.colored_label(
+                    Color32::from_rgb(120, 220, 160),
+                    "✓ Max Quality Mode: Latency budget = ∞, 8 MoE experts, full FOA ambisonics, 5-step deliberation.",
+                );
+            } else {
+                ui.colored_label(
+                    Color32::from_rgb(220, 200, 100),
+                    "⚙ Direct Mode: Renders exact current UI sliders and tier without dynamic adaptation.",
+                );
+            }
+            ui.add_space(8.0);
+
+            ui.label(egui::RichText::new("🧠 Neural Thinking Steps Override").strong());
+            ui.horizontal_wrapped(|ui| {
+                let is_auto = rain.user_thinking_steps.is_none();
+                if ui.selectable_label(is_auto, "Auto (Governor)").clicked() {
+                    rain.user_thinking_steps = None;
+                }
+                for k in 1..=5 {
+                    let is_k = rain.user_thinking_steps == Some(k);
+                    let label = match k {
+                        1 => "1 (Fast Turbo)",
+                        3 => "3 (Standard)",
+                        5 => "5 (Studio Deep)",
+                        2 => "2",
+                        4 => "4",
+                        _ => "",
+                    };
+                    if ui.selectable_label(is_k, label).clicked() {
+                        rain.user_thinking_steps = Some(k);
+                    }
+                }
+            });
+            ui.add_space(8.0);
+
             ui.horizontal(|ui| {
                 ui.label("Render Duration:");
                 ui.selectable_value(&mut self.export_duration, 10.0, "10s (Quick Sample)");
@@ -783,7 +904,6 @@ impl RainView {
             ui.label("Output Format: WAV 32-bit IEEE Float (48,000 Hz)");
 
             ui.add_space(10.0);
-
             let is_exporting = self.export_progress.is_some();
             if is_exporting {
                 let progress = self.export_progress.unwrap_or(0.0);
@@ -819,9 +939,83 @@ impl RainView {
                 ui.colored_label(Color32::from_rgb(100, 220, 160), status);
             }
         });
+
+        ui.add_space(12.0);
+
+        // Retro-Upgrade "Rewind & Super-Resolve" Card
+        ui.group(|ui| {
+            ui.label(egui::RichText::new("⏪ Acoustic History Buffer & Retro-Upgrade Engine").strong());
+            ui.label(
+                "Non-causally extracts past seconds of conditioning trajectory and FOA history, applies bidirectional \
+                 lookahead Gaussian smoothing, and re-renders with 5-step deliberation into 48kHz Studio Master stereo.",
+            );
+            ui.add_space(6.0);
+
+            let hist_sec = rain.telemetry.history_seconds_available;
+            ui.horizontal(|ui| {
+                ui.label(format!("Acoustic History Available: {:.1}s / 30.0s", hist_sec));
+                ui.add(egui::ProgressBar::new(hist_sec / 30.0).text(format!("{:.1}s", hist_sec)));
+            });
+
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                let can_rewind = hist_sec >= 0.5;
+                if ui.add_enabled(can_rewind, egui::Button::new("⏪ Rewind Past 10s & Upgrade to WAV")).clicked() {
+                    if let Some(as_ref) = audio_state {
+                        if let Ok(hist) = as_ref.history.read() {
+                            match hist.retro_upgrade_to_wav_buffer(10.0f32.min(hist_sec)) {
+                                Ok(wav_bytes) => {
+                                    crate::storage_manager::trigger_binary_download(
+                                        "rainai_rewind_10s_studio_master.wav",
+                                        &wav_bytes,
+                                        "audio/wav",
+                                    );
+                                    self.export_status = Some(format!(
+                                        "Successfully retro-upgraded past {:.1}s into Studio Master WAV ({:.1} KB) with bidirectional lookahead!",
+                                        10.0f32.min(hist_sec),
+                                        wav_bytes.len() as f32 / 1024.0
+                                    ));
+                                }
+                                Err(e) => {
+                                    self.export_status = Some(format!("Rewind upgrade failed: {e}"));
+                                }
+                            }
+                        }
+                    } else {
+                        self.export_status = Some("Audio engine state unavailable for rewind upgrade.".into());
+                    }
+                }
+
+                if ui.add_enabled(can_rewind, egui::Button::new("⏪ Rewind Full History & Upgrade to WAV")).clicked() {
+                    if let Some(as_ref) = audio_state {
+                        if let Ok(hist) = as_ref.history.read() {
+                            match hist.retro_upgrade_to_wav_buffer(hist_sec) {
+                                Ok(wav_bytes) => {
+                                    crate::storage_manager::trigger_binary_download(
+                                        "rainai_rewind_full_studio_master.wav",
+                                        &wav_bytes,
+                                        "audio/wav",
+                                    );
+                                    self.export_status = Some(format!(
+                                        "Successfully retro-upgraded full {:.1}s into Studio Master WAV ({:.1} KB)!",
+                                        hist_sec,
+                                        wav_bytes.len() as f32 / 1024.0
+                                    ));
+                                }
+                                Err(e) => {
+                                    self.export_status = Some(format!("Rewind upgrade failed: {e}"));
+                                }
+                            }
+                        }
+                    } else {
+                        self.export_status = Some("Audio engine state unavailable for rewind upgrade.".into());
+                    }
+                }
+            });
+        });
     }
 
-    fn render_telemetry_tab(&mut self, ui: &mut egui::Ui, rain: &mut RainState) {
+    fn render_telemetry_tab(&mut self, ui: &mut egui::Ui, rain: &mut RainState, _audio_state: Option<&SharedAudioState>) {
         ui.heading("Invasive Meta-Controller Telemetry, Optimization Profiles & Stress Harness");
         ui.add_space(8.0);
 
@@ -872,18 +1066,128 @@ impl RainView {
                 ui.selectable_value(&mut rain.optimization_profile, GovernorOptimizationProfile::StudioMaster, GovernorOptimizationProfile::StudioMaster.short_label());
                 ui.selectable_value(&mut rain.optimization_profile, GovernorOptimizationProfile::BluetoothA2DPSink, GovernorOptimizationProfile::BluetoothA2DPSink.short_label());
             });
+
+            ui.add_space(6.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Live Preference Mode:");
+                ui.selectable_value(
+                    &mut rain.meta_mediation_mode,
+                    MetaControllerInterceptionMode::MediatedLive,
+                    "Mediated Live (Physical Momentum)",
+                );
+                ui.selectable_value(
+                    &mut rain.meta_mediation_mode,
+                    MetaControllerInterceptionMode::DirectBypass,
+                    "Direct Slider Control (No Lag)",
+                );
+            });
         });
 
         ui.add_space(8.0);
 
-        ui.columns(2, |cols| {
-            cols[0].group(|ui| {
-                ui.label(egui::RichText::new("Buffer & Latency Telemetry").strong());
+        // Neural Deliberation & Distilled Consistency Jump Card
+        ui.group(|ui| {
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("🧠 Neural Deliberation & Consistency Jump Engine").strong());
+                if rain.use_consistency_jump {
+                    ui.colored_label(Color32::from_rgb(100, 240, 180), "[⚡ Turbo 1-Step Consistency Jump ACTIVE]");
+                } else {
+                    let override_str = if rain.user_thinking_steps.is_some() { " (User Override)" } else { " (Governor Controlled)" };
+                    ui.colored_label(Color32::from_rgb(180, 200, 255), format!("[Deliberation Depth: {} Recurrence Steps{}]", rain.thinking_steps, override_str));
+                }
+            });
+            ui.label("Controls iterative latent trajectory reasoning depth and 1-step distilled consistency jump heads for real-time spatial synthesis.");
+            ui.add_space(4.0);
+
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Deliberation Depth:");
+                let is_auto = rain.user_thinking_steps.is_none();
+                if ui.selectable_label(is_auto, "Auto (Governor)").clicked() {
+                    rain.user_thinking_steps = None;
+                }
+                for k in 1..=5 {
+                    let is_k = rain.user_thinking_steps == Some(k);
+                    let label = match k {
+                        1 => "1 (Fast)",
+                        3 => "3 (Balanced)",
+                        5 => "5 (Deep)",
+                        2 => "2",
+                        4 => "4",
+                        _ => "",
+                    };
+                    if ui.selectable_label(is_k, label).clicked() {
+                        rain.user_thinking_steps = Some(k);
+                    }
+                }
+
+                ui.add_space(12.0);
+                let btn_text = if rain.use_consistency_jump {
+                    "⚡ Consistency Jump: ENABLED (1-Step Distilled)"
+                } else {
+                    "⚡ Consistency Jump: Disabled (Multi-Step Deliberation)"
+                };
+                let btn_color = if rain.use_consistency_jump {
+                    Color32::from_rgb(50, 160, 100)
+                } else {
+                    Color32::from_rgb(80, 90, 110)
+                };
+                if ui.add(egui::Button::new(egui::RichText::new(btn_text).color(Color32::WHITE)).fill(btn_color)).clicked() {
+                    rain.use_consistency_jump = !rain.use_consistency_jump;
+                }
+            });
+        });
+
+        ui.add_space(8.0);
+
+        let is_mobile = ui.available_width() < 650.0;
+
+        let render_telemetry_buf = |ui: &mut egui::Ui, rain: &RainState| {
+            ui.group(|ui| {
+                ui.label(egui::RichText::new("Dynamic Ring Buffer & Latency Telemetry").strong());
                 ui.add_space(4.0);
 
                 let target_buf = rain.optimization_profile.target_buffer_ms();
-                ui.label(format!("Audio Worklet Buffer Health: {:.1} ms", rain.telemetry.buffer_health_ms));
-                ui.add(egui::ProgressBar::new(rain.telemetry.buffer_health_ms / target_buf.max(1.0)).text(format!("Target: {:.0}ms", target_buf)));
+                ui.label(format!("Target Buffer Latency: {:.0} ms", target_buf));
+                ui.label(format!(
+                    "Dynamic Buffer Allocation: {} Bytes ({:.1} KB)",
+                    rain.telemetry.dynamic_buffer_bytes,
+                    rain.telemetry.dynamic_buffer_bytes as f32 / 1024.0
+                ));
+
+                let health_pct = rain.telemetry.buffer_health_ratio * 100.0;
+                let health_color = if health_pct >= 70.0 {
+                    Color32::from_rgb(80, 220, 140)
+                } else if health_pct >= 40.0 {
+                    Color32::from_rgb(240, 200, 60)
+                } else {
+                    Color32::from_rgb(255, 90, 80)
+                };
+
+                ui.horizontal(|ui| {
+                    ui.label("Relative Buffer Health:");
+                    ui.colored_label(
+                        health_color,
+                        format!("{:.0}% of dynamic target ({:.1}ms)", health_pct, rain.telemetry.buffer_health_ms),
+                    );
+                });
+                ui.add(egui::ProgressBar::new(rain.telemetry.buffer_health_ratio.min(1.0)).text(format!("{:.0}%", health_pct)));
+
+                ui.add_space(6.0);
+                ui.label(format!("Dynamic Buffer: {:.1} KB ({:.1} ms) | Ceiling: {:.0} KB",
+                    rain.telemetry.dynamic_buffer_bytes as f32 / 1024.0,
+                    rain.telemetry.buffer_capacity_ms,
+                    rain.telemetry.env_max_buffer_bytes as f32 / 1024.0,
+                ));
+                let eff = if rain.telemetry.dynamic_buffer_bytes > 0 {
+                    rain.telemetry.buffer_capacity_ms / (rain.telemetry.dynamic_buffer_bytes as f32 / 1024.0)
+                } else {
+                    0.0
+                };
+                ui.label(format!("Buffer Efficiency: {:.2} ms/KB | Resizes: {}", eff, rain.telemetry.buffer_resizes_count));
+
+                ui.add_space(6.0);
+                ui.label(format!("Acoustic History Available: {:.1}s / 30.0s", rain.telemetry.history_seconds_available));
+                ui.add(egui::ProgressBar::new(rain.telemetry.history_seconds_available / 30.0));
 
                 ui.add_space(6.0);
                 ui.label(format!("Frame Jitter Delta-T: {:.1} ms", rain.telemetry.delta_t_ms));
@@ -893,10 +1197,19 @@ impl RainView {
                 ui.label(format!("GPU WebGPU Headroom: {:.0}%", rain.telemetry.gpu_headroom * 100.0));
                 ui.add(egui::ProgressBar::new(rain.telemetry.gpu_headroom));
             });
+        };
 
-            cols[1].group(|ui| {
+        let render_telemetry_actions = |ui: &mut egui::Ui, rain: &RainState| {
+            ui.group(|ui| {
                 ui.label(egui::RichText::new("Autonomous Meta-Controller Actions").strong());
                 ui.add_space(4.0);
+
+                // Consistency Jump & Deliberation Telemetry
+                if rain.telemetry.consistency_jump_active {
+                    ui.colored_label(Color32::from_rgb(100, 240, 180), "⚡ Consistency Jump Head: ACTIVE (1-Step Direct Distillation)");
+                } else {
+                    ui.colored_label(Color32::from_rgb(180, 210, 255), format!("🧠 Active Deliberation Depth: {} Recurrence Steps", rain.telemetry.thinking_steps));
+                }
 
                 // MoE Expert Shedding
                 let exp_ratio = rain.telemetry.active_experts as f32 / 8.0;
@@ -929,13 +1242,27 @@ impl RainView {
 
                 ui.label(format!("Procedural Synthesis Blend: {:.1}%", rain.telemetry.synthesis_blend * 100.0));
                 ui.label(format!("Governor Decision: {}", rain.telemetry.governor_status));
+                ui.label(format!("Macro Quant Cooldown: {:.1}s / 10.0s | Swaps: {}", rain.telemetry.quant_macro_cooldown, rain.telemetry.quant_swaps_count));
+                ui.label(format!("Buffer Resize Cooldown: {:.1}s / 2.0s", rain.telemetry.buffer_resize_cooldown));
                 ui.label(format!("Active Hardware Target: {}", rain.telemetry.active_path_label));
+                ui.label(format!("Active Synthesis Engine: {}", rain.synthesis_mode.label()));
 
                 ui.add_space(6.0);
                 ui.label("Conditioning Vector Dimension: 554 floats (Physical & Ambisonic)");
                 ui.label(format!("Preferred Target Tier: {}", rain.quality_tier.label()));
             });
-        });
+        };
+
+        if is_mobile {
+            render_telemetry_buf(ui, rain);
+            ui.add_space(8.0);
+            render_telemetry_actions(ui, rain);
+        } else {
+            ui.columns(2, |cols| {
+                render_telemetry_buf(&mut cols[0], rain);
+                render_telemetry_actions(&mut cols[1], rain);
+            });
+        }
 
         ui.add_space(10.0);
         ui.group(|ui| {
@@ -943,8 +1270,8 @@ impl RainView {
             ui.label("Hardware representation and numerical mapping across the neural synthesis pipeline:");
             ui.add_space(6.0);
 
-            ui.columns(2, |cols| {
-                cols[0].vertical(|ui| {
+            let render_roles = |ui: &mut egui::Ui| {
+                ui.vertical(|ui| {
                     ui.label(egui::RichText::new("Layer Heterogeneous Roles").strong());
                     ui.label("• Mamba SSM Recurrence: BF16 / TF32 (Extreme Exponent Stability)");
                     ui.label("• Latent VAE Bottlenecks: Posit16 <16, 1> (Tapered Precision near 0 dBFS)");
@@ -953,12 +1280,14 @@ impl RainView {
                     ui.label("• Ambisonic Spatial Rotations: FP32 (Exact phase preservation)");
                     ui.label("• Macro Conditioning: Posit8 / FP16 (Smooth parameter manifold)");
                 });
+            };
 
-                cols[1].vertical(|ui| {
-                    ui.label(egui::RichText::new("Discrete Grid & Snapping Mechanics").strong());
-                    ui.label("• Integer Levels: L = round(2^b) in {0, 3, 4, 16, 64, 256, 65536, 2^32}");
-                    ui.label("• Normalization Invariant: Standardized [-scale, +scale] physical range");
-                    ui.label("• Equal-Power Hann Crossfade: 128 samples (2.67ms) clickless transitions");
+            let render_grid = |ui: &mut egui::Ui, rain: &RainState| {
+                ui.vertical(|ui| {
+                    ui.label(egui::RichText::new("Discrete Grid & Geometric Midpoints").strong());
+                    ui.label("• Integer Levels: L in {0, 3 (1.58b), 4, 8, 16, 32, 256, 65536, 2^32}");
+                    ui.label("• Geometric Midpoints: [0.5, 1.807) Ternary158, [2.585, 3.585) Posit8, [7.585, 11.585) BF16");
+                    ui.label("• Equal-Power Hann Crossfade: clickless zero-overhead runtime transitions");
                     ui.label(format!("• Active Target Format: {}", rain.telemetry.active_quantization_format));
                     if rain.telemetry.is_prebuffered {
                         ui.colored_label(Color32::from_rgb(80, 240, 160), format!("• Buffer Status: {:.0}ms Primed & Ready (Happy)", rain.optimization_profile.target_buffer_ms()));
@@ -966,7 +1295,18 @@ impl RainView {
                         ui.colored_label(Color32::from_rgb(255, 200, 80), format!("• Buffer Status: Pre-Buffering ({:.0}ms / {:.0}ms)", rain.telemetry.buffer_health_ms, rain.optimization_profile.target_buffer_ms()));
                     }
                 });
-            });
+            };
+
+            if is_mobile {
+                render_roles(ui);
+                ui.add_space(8.0);
+                render_grid(ui, rain);
+            } else {
+                ui.columns(2, |cols| {
+                    render_roles(&mut cols[0]);
+                    render_grid(&mut cols[1], rain);
+                });
+            }
         });
     }
 }

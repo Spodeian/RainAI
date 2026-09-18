@@ -19,8 +19,16 @@ struct AmbisonicFrame {
     ch_x: f32,          // Front (Back - Front)
 };
 
+struct DropletVisual {
+    pos_x: f32,
+    pos_y: f32,
+    alpha: f32,
+    ripple_r: f32,
+};
+
 @group(0) @binding(0) var<storage, read> droplets: array<DropletInstance>;
 @group(0) @binding(1) var<storage, read_write> output_audio: array<AmbisonicFrame>;
+@group(0) @binding(2) var<storage, read_write> visual_particles: array<DropletVisual>;
 
 // Workgroup size: 256 threads per workgroup
 @compute @workgroup_size(256)
@@ -59,15 +67,15 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let cos_azim = cos(eff_azimuth);
     let sin_azim = sin(eff_azimuth);
     
-    let gain_w = 1.0;                       // SN3D normalized zeroth-order
-    let gain_y = sin_azim * cos_elev;       // Left - Right
-    let gain_z = sin_elev;                  // Vertical rain impact
-    let gain_x = cos_azim * cos_elev;       // Front - Back
-    
     let sample_val = d.amplitude * energy_scale;
-    
-    output_audio[droplet_idx].ch_w = sample_val * gain_w;
-    output_audio[droplet_idx].ch_y = sample_val * gain_y;
-    output_audio[droplet_idx].ch_z = sample_val * gain_z;
-    output_audio[droplet_idx].ch_x = sample_val * gain_x;
+    output_audio[droplet_idx].ch_w = sample_val;
+    output_audio[droplet_idx].ch_y = sample_val * (sin_azim * cos_elev);
+    output_audio[droplet_idx].ch_z = sample_val * sin_elev;
+    output_audio[droplet_idx].ch_x = sample_val * (cos_azim * cos_elev);
+
+    // 5. Visual Particle Coordinates for Soundfield Radar
+    visual_particles[droplet_idx].pos_x = eff_azimuth;
+    visual_particles[droplet_idx].pos_y = eff_elevation;
+    visual_particles[droplet_idx].alpha = clamp(energy_scale / 2.5, 0.1, 1.0);
+    visual_particles[droplet_idx].ripple_r = d_clamped * 2.5;
 }

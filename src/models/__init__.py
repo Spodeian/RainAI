@@ -1,71 +1,32 @@
-"""RainAI Neural Models, Quantization, and Physics Modules."""
+"""
+RainAI Core Neural Architecture & Physics Models
+"""
 
-from .diff_autoencoder import (
-    SpatialAudioEncoder,
-    AffineAlignment,
-    LearnedMixedPrecisionQuantizer,
-    BidirectionalMambaBlock,
-    HierarchicalMultiResLoss,
-    LATENT_DIM,
-    CONDITION_DIM,
-)
-from .mamba2_moe import (
-    Mamba2MoETrajectory,
-    MambaSSDBlock,
-    JambaSelfAttentionBlock,
-    NUM_EXPERTS,
-)
+from .residual_quant import ResidualWeight, ResidualLinear, ResidualConv1d
+from .diff_autoencoder import SpatialAudioEncoder, HierarchicalMultiResLoss, AffineAlignment, LearnedMixedPrecisionQuantizer
+from .ddsp import ContinuousParametricFilter, DifferentiableReverbEngine, spherical_harmonics_foa
+from .mamba2_moe import Mamba2MoETrajectory, MambaSSDBlock, JambaSelfAttentionBlock
 from .meta_controller import InvasiveMetaController
-from .ddsp import (
-    ContinuousParametricFilter,
-    DifferentiableReverbEngine,
-    spherical_harmonics_foa,
-    SAMPLE_RATE,
-)
 from .physics_losses import (
     MultiScaleAmbisonicPhysicsLoss,
     PhysicsTrajectoryLoss,
-    InstantaneousPhaseLoss,
-    MultiScaleSTFTDiscriminator,
     MoELoadBalancingLoss,
-    KnowledgeDistillationLoss,
     BetaVAEDisentanglementLoss,
+    MultiScaleSTFTDiscriminator,
     compute_slice_aware_hwil_penalty,
-)
-from .residual_quant import (
-    ResidualWeight,
-    ResidualLinear,
-    ResidualConv1d,
-    NUM_DEFAULT_SLICES,
+    discriminator_hinge_loss,
+    generator_adversarial_loss,
+    feature_matching_loss
 )
 
 __all__ = [
-    "SpatialAudioEncoder",
-    "AffineAlignment",
-    "LearnedMixedPrecisionQuantizer",
-    "BidirectionalMambaBlock",
-    "HierarchicalMultiResLoss",
-    "LATENT_DIM",
-    "CONDITION_DIM",
-    "Mamba2MoETrajectory",
-    "MambaSSDBlock",
-    "JambaSelfAttentionBlock",
-    "NUM_EXPERTS",
+    "ResidualWeight", "ResidualLinear", "ResidualConv1d",
+    "SpatialAudioEncoder", "HierarchicalMultiResLoss", "AffineAlignment", "LearnedMixedPrecisionQuantizer",
+    "ContinuousParametricFilter", "DifferentiableReverbEngine", "spherical_harmonics_foa",
+    "Mamba2MoETrajectory", "MambaSSDBlock", "JambaSelfAttentionBlock",
     "InvasiveMetaController",
-    "ContinuousParametricFilter",
-    "DifferentiableReverbEngine",
-    "spherical_harmonics_foa",
-    "SAMPLE_RATE",
-    "MultiScaleAmbisonicPhysicsLoss",
-    "PhysicsTrajectoryLoss",
-    "InstantaneousPhaseLoss",
-    "MultiScaleSTFTDiscriminator",
-    "MoELoadBalancingLoss",
-    "KnowledgeDistillationLoss",
-    "BetaVAEDisentanglementLoss",
-    "compute_slice_aware_hwil_penalty",
-    "ResidualWeight",
-    "ResidualLinear",
-    "ResidualConv1d",
-    "NUM_DEFAULT_SLICES",
+    "MultiScaleAmbisonicPhysicsLoss", "PhysicsTrajectoryLoss", "MoELoadBalancingLoss",
+    "BetaVAEDisentanglementLoss", "MultiScaleSTFTDiscriminator",
+    "compute_slice_aware_hwil_penalty", "discriminator_hinge_loss", 
+    "generator_adversarial_loss", "feature_matching_loss"
 ]

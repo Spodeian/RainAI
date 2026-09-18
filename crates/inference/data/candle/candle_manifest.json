@@ -1,0 +1,43 @@
+{
+  "framework": "Candle",
+  "version": "0.11",
+  "phases_trained": [
+    "Export"
+  ],
+  "models": {
+    "spatial_vae": "spatial_vae.safetensors",
+    "spatial_vae_best": "spatial_vae_best.safetensors",
+    "mamba2_moe": "mamba2_moe.safetensors",
+    "mamba2_moe_best": "mamba2_moe_best.safetensors",
+    "mamba2_moe_fast": "mamba2_moe_fast.safetensors",
+    "mamba2_dense_soup": "mamba2_dense_soup.safetensors"
+  },
+  "latent_dim": 64,
+  "conditioning_dim": 554,
+  "experts": 8,
+  "tau_cov": 0.75,
+  "gamma_tabu": 1.0,
+  "max_thinking_steps": 3,
+  "stft_mode": "Combined",
+  "best_vae_val_loss": null,
+  "best_mamba_val_loss": null,
+  "real_dataset_used": true,
+  "flow_matching_enabled": true,
+  "expert_diversity_enabled": true,
+  "lambda_div": 0.05,
+  "enable_distillation": true,
+  "lambda_distill": 0.1,
+  "thinking_curriculum_enabled": true,
+  "so3_aug_prob": 0.30000001192092896,
+  "surface_mixup_prob": 0.25,
+  "lambda_vel": 0.1,
+  "lambda_acc": 0.05,
+  "lambda_drag": 0.02,
+  "lambda_z": 0.001,
+  "lambda_doa": 0.1,
+  "lambda_diff": 0.05,
+  "lambda_straight": 0.05,
+  "scheduler": "CosineAnnealingWithWarmup",
+  "gradient_clipping_max_norm": 1.0,
+  "timestamp": "2026-09-17"
+}

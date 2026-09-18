@@ -9,42 +9,71 @@ repository.workspace = true
 [lints]
 workspace = true
 
-[[bin]]
-name = "rainai_prep"
-path = "src/bin/preprocess.rs"
+[features]
+default = []
+cuda = ["candle-core/cuda", "candle-nn/cuda"]
+metal = ["candle-core/metal", "candle-nn/metal"]
+
+[lib]
+name = "utilities"
+path = "src/lib.rs"
 
 [[bin]]
 name = "rainai_upmix"
 path = "src/bin/spatial_upmix.rs"
+test = false
 
 [[bin]]
 name = "rainai_features"
-path = "src/bin/audio_processor.rs"
+path = "src/bin/features.rs"
+test = false
 
 [[bin]]
 name = "rainai_synth"
 path = "src/bin/synth_rain.rs"
+test = false
 
 [[bin]]
 name = "rainai_ingest"
 path = "src/bin/ingest.rs"
+test = false
 
 [[bin]]
 name = "rainai_studio"
 path = "src/bin/tui.rs"
+test = false
+
+[[bin]]
+name = "rainai_golden_vectors"
+path = "src/bin/golden_vectors.rs"
+test = false
+
+[[bin]]
+name = "rainai_train_candle"
+path = "src/bin/train_candle.rs"
+test = false
+
 
 [dependencies]
-hound = { workspace = true }
-rayon = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
+shared = { workspace = true }
+audio = { workspace = true }
+candle-core = { workspace = true }
+candle-nn = { workspace = true }
 anyhow = { workspace = true }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
-reqwest = { workspace = true, features = ["blocking", "json", "stream"] }
 rand = { workspace = true }
 rand_distr = { workspace = true }
-rustfft = { workspace = true }
 ratatui = { workspace = true }
-crossterm = { workspace = true }
+rayon = { workspace = true }
+rustfft = { workspace = true }
+serde_json = { workspace = true }
 sysinfo = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+hound = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+reqwest = { workspace = true, features = ["blocking", "json", "stream", "rustls-tls"] }
+crossterm = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+futures = { workspace = true }
+sha2 = "0.10"
+

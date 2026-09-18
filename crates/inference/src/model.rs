@@ -11,7 +11,9 @@ pub enum PrecisionFormat {
     Pruned,
     Ternary158,
     Int2,
+    Int3,
     Int4,
+    Int5,
     Int6,
     #[default]
     Int8,
@@ -34,7 +36,9 @@ impl PrecisionFormat {
             Self::Pruned => "Pruned (0-Bit / Zero-Skip)",
             Self::Ternary158 => "Ternary 1.58-Bit ({-1, 0, +1})",
             Self::Int2 => "INT2 (2-Bit, 4 Levels)",
+            Self::Int3 => "INT3 (3-Bit, 8 Levels)",
             Self::Int4 => "INT4 (4-Bit, 16 Levels)",
+            Self::Int5 => "INT5 (5-Bit, 32 Levels)",
             Self::Int6 => "INT6 (6-Bit, 64 Levels)",
             Self::Int8 => "INT8 (8-Bit, 256 Levels)",
             Self::Int16 => "INT16 (16-Bit Fixed-Point)",
@@ -56,7 +60,9 @@ impl PrecisionFormat {
             Self::Pruned => 0.0,
             Self::Ternary158 => 1.58,
             Self::Int2 => 2.0,
+            Self::Int3 => 3.0,
             Self::Int4 => 4.0,
+            Self::Int5 => 5.0,
             Self::Int6 => 6.0,
             Self::Int8 => 8.0,
             Self::Int16 => 16.0,
@@ -75,7 +81,9 @@ impl PrecisionFormat {
             Self::Pruned
                 | Self::Ternary158
                 | Self::Int2
+                | Self::Int3
                 | Self::Int4
+                | Self::Int5
                 | Self::Int6
                 | Self::Int8
                 | Self::Int16
@@ -94,27 +102,71 @@ impl PrecisionFormat {
         matches!(self, Self::Posit8 | Self::Posit16)
     }
 
-    /// Discrete level snapping via L = round(2^b)
+    /// Discrete geometric midpoint level snapping:
+    /// - [0.000, 0.500) -> Pruned
+    /// - [0.500, log2(3.5) = 1.807) -> Ternary158
+    /// - [1.807, log2(6.0) = 2.585) -> Int2
+    /// - [2.585, log2(12.0) = 3.585) -> Posit8 / Int3
+    /// - [3.585, log2(24.0) = 4.585) -> Int4
+    /// - [4.585, log2(48.0) = 5.585) -> Int5 (32 levels)
+    /// - [5.585, 7.585) -> Int8
+    /// - [7.585, 11.585) -> Bf16
+    /// - [11.585, 16.585) -> Fp16
+    /// - >= 16.585 -> Fp32
     pub fn from_continuous_bit_width(b: f32) -> Self {
-        if b <= 0.5 {
+        if b < 0.5 {
             Self::Pruned
-        } else if b <= 1.8 {
+        } else if b < 1.807355 {
             Self::Ternary158
-        } else if b <= 3.0 {
+        } else if b < 2.584963 {
             Self::Int2
-        } else if b <= 5.0 {
+        } else if b < 3.584963 {
+            Self::Posit8
+        } else if b < 4.584963 {
             Self::Int4
-        } else if b <= 7.0 {
-            Self::Int6
-        } else if b <= 10.0 {
+        } else if b < 5.584963 {
+            Self::Int5
+        } else if b < 7.584963 {
             Self::Int8
-        } else if b <= 16.5 {
-            Self::Int16
+        } else if b < 11.58496 {
+            Self::Bf16
+        } else if b < 16.58496 {
+            Self::Fp16
         } else {
             Self::Fp32
         }
     }
 }
+
+/// Execution mode for Mixture of Experts (MoE) neural layers
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum MoeExecutionMode {
+    /// Full dynamic Top-K sparse routing across specialized experts
+    #[default]
+    SparseDynamic,
+    /// Static single-pass dense soup (cold-start / instant zero-overhead initialization)
+    DenseSoupStatic,
+    /// On-the-fly dynamically collapsed dense soup derived from router probabilities
+    DenseSoupDynamic,
+    /// Dual macro-ensemble combining base invariant expert with dominant specialist
+    DualMacroSoup,
+}
+
+impl MoeExecutionMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::SparseDynamic => "Sparse Dynamic (Top-K Routed Experts)",
+            Self::DenseSoupStatic => "Dense Soup Static (Cold-Start Single Matmul)",
+            Self::DenseSoupDynamic => "Dense Soup Dynamic (On-the-Fly Router Merged)",
+            Self::DualMacroSoup => "Dual Macro Ensemble (Base + Specialist)",
+        }
+    }
+
+    pub fn is_dense_soup(self) -> bool {
+        matches!(self, Self::DenseSoupStatic | Self::DenseSoupDynamic)
+    }
+}
+
 
 /// Structural role of a neural/acoustic layer, dictating its optimal unquantized representation
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -140,11 +192,52 @@ impl LayerRole {
         }
     }
 
+    /// Pareto-optimal layer sensitivity fallback ensuring each layer operates naturally
+    /// within its ideal arithmetic family (Bf16 for SSM, Posit for latents, Floats for 3D rotations, Ints for projections)
     pub fn down_quantization_fallback(self, target_bits: f32) -> PrecisionFormat {
-        if target_bits >= 16.5 {
-            self.optimal_unquantized_format()
-        } else {
-            PrecisionFormat::from_continuous_bit_width(target_bits)
+        if target_bits >= 16.58496 {
+            return PrecisionFormat::Fp32;
+        }
+        match self {
+            Self::MambaStateSpaceRecurrence => {
+                if target_bits >= 7.0 {
+                    PrecisionFormat::Bf16
+                } else if target_bits >= 4.585 {
+                    PrecisionFormat::Int5
+                } else {
+                    PrecisionFormat::from_continuous_bit_width(target_bits)
+                }
+            }
+            Self::LatentBottleneck => {
+                if target_bits >= 5.585 {
+                    PrecisionFormat::Posit16
+                } else if target_bits >= 2.585 {
+                    PrecisionFormat::Posit8
+                } else {
+                    PrecisionFormat::from_continuous_bit_width(target_bits)
+                }
+            }
+            Self::MacroConditioning => {
+                if target_bits >= 5.585 {
+                    PrecisionFormat::Posit16
+                } else if target_bits >= 2.585 {
+                    PrecisionFormat::Posit8
+                } else {
+                    PrecisionFormat::from_continuous_bit_width(target_bits)
+                }
+            }
+            Self::FilterCoefficients | Self::AmbisonicRotation => {
+                if target_bits >= 11.585 {
+                    PrecisionFormat::Fp32
+                } else if target_bits >= 5.585 {
+                    PrecisionFormat::Fp16
+                } else {
+                    PrecisionFormat::from_continuous_bit_width(target_bits)
+                }
+            }
+            Self::DenseProjection => {
+                PrecisionFormat::from_continuous_bit_width(target_bits)
+            }
         }
     }
 }
@@ -350,6 +443,29 @@ impl BoxCoxDequantizer {
         if is_neg { -val } else { val }
     }
 
+    /// Pure continuous inverse Box-Cox mapping without discrete quantization
+    #[inline]
+    pub fn dequantize_continuous(val: f32, lambda: f32) -> f32 {
+        if lambda <= 1e-4 {
+            return val;
+        }
+
+        let sign = val.signum();
+        let abs_y = val.abs();
+
+        if (1.0 - lambda).abs() < 1e-3 {
+            sign * (abs_y.exp() - 1.0)
+        } else {
+            let p = 1.0 - lambda;
+            let inner = 1.0 + abs_y * p;
+            if p < 0.0 && inner <= 0.0 {
+                sign * f32::INFINITY
+            } else {
+                sign * (inner.max(0.0).powf(1.0 / p) - 1.0)
+            }
+        }
+    }
+
     /// Dequantize a normalized value from the companded manifold back to linear domain
     #[inline]
     pub fn dequantize_scalar(val: f32, bit_width: f32, lambda: f32) -> f32 {
@@ -357,31 +473,32 @@ impl BoxCoxDequantizer {
             return 0.0;
         }
 
-        // Capacity staircase: n intervals
-        let n = (2.0f32.powf(bit_width) - 1.0).max(1.0);
-        let quantized = (val * n).round() / n;
-
-        // Linear manifold
-        if lambda <= 1e-4 {
-            return quantized;
-        }
-
-        // Inverse Box-Cox companding
-        let sign = quantized.signum();
-        let abs_y = quantized.abs();
-
-        if (1.0 - lambda).abs() < 1e-3 {
-            // Clamped Taylor expansion: exp(|y|) - 1
-            sign * (abs_y.exp() - 1.0)
+        let quantized = if bit_width >= 32.0 {
+            val
         } else {
-            let p = 1.0 - lambda;
-			let inner = 1.0 + abs_y * p;
-			if p < 0.0 && inner <= 0.0 {
-				sign * f32::INFINITY
-			} else {
-				sign * (inner.max(0.0).powf(1.0 / p) - 1.0)
-			}
-        }
+            let n = (2.0f32.powf(bit_width) - 1.0).max(1.0);
+            (val * n).round() / n
+        };
+
+        Self::dequantize_continuous(quantized, lambda)
+    }
+
+    /// Static 256-entry L1-cache resident lookup table for Posit8 <8, 1> decoding
+    pub fn get_posit8_lut() -> &'static [f32; 256] {
+        static POSIT8_LUT: std::sync::OnceLock<[f32; 256]> = std::sync::OnceLock::new();
+        POSIT8_LUT.get_or_init(|| {
+            let mut table = [0.0f32; 256];
+            for i in 0..256 {
+                table[i] = Self::decode_posit16((i as u16) << 8);
+            }
+            table
+        })
+    }
+
+    /// O(1) single-cycle Posit8 decoding via static L1 cache table
+    #[inline]
+    pub fn decode_posit8_lut(byte: u8) -> f32 {
+        Self::get_posit8_lut()[byte as usize]
     }
 
     /// Dequantize with explicit target PrecisionFormat
@@ -396,7 +513,7 @@ impl BoxCoxDequantizer {
             PrecisionFormat::Posit16 => Self::decode_posit16(Self::encode_posit16(val)),
             PrecisionFormat::Posit8 => {
                 let p16 = Self::encode_posit16(val);
-                Self::decode_posit16(p16 & 0xFF00)
+                Self::decode_posit8_lut((p16 >> 8) as u8)
             }
             _ => {
                 let bits = format.nominal_bits();

@@ -17,15 +17,15 @@
     "filename": "acoustic_anchor_fp32.bin",
     "format": "FP32 Continuous Biquad & Spherical Harmonics",
     "size_bytes": 140160,
-    "crc32": "0d57233f",
-    "sha256": "ad8a44650d1d3cc3b32d20d8a0c8a6cd00b1efdb27a0b76345f9533ac0c4497b"
+    "crc32": "b543b602",
+    "sha256": "b8625f7a18a157219c977eca8341e57467ec6728c52229396e42d1546f06a352"
   },
   "progressive_slices": [
     {
       "slice_index": 0,
       "filename": "slice_0_ternary.bin",
       "description": "Tier 0: Ternary 1.58-Bit (Instant startup < 500ms, addition-only)",
-      "chunk_size_bytes": 5701120,
+      "chunk_size_bytes": 5986816,
       "layers": {
         "encoder.bi_mamba.conv_bwd": {
           "shape": [
@@ -33,7 +33,7 @@
             1,
             5
           ],
-          "gamma": 0.7933743596076965,
+          "gamma": 0.7865789532661438,
           "dtype": "int8_ternary",
           "offset": 0,
           "size_bytes": 2560
@@ -44,7 +44,7 @@
             1,
             5
           ],
-          "gamma": 0.782931923866272,
+          "gamma": 0.7751359343528748,
           "dtype": "int8_ternary",
           "offset": 2560,
           "size_bytes": 2560
@@ -54,7 +54,7 @@
             512,
             1024
           ],
-          "gamma": 0.024734705686569214,
+          "gamma": 0.024731699377298355,
           "dtype": "int8_ternary",
           "offset": 5120,
           "size_bytes": 524288
@@ -64,7 +64,7 @@
             512,
             554
           ],
-          "gamma": 0.03362156078219414,
+          "gamma": 0.033986646682024,
           "dtype": "int8_ternary",
           "offset": 529408,
           "size_bytes": 283648
@@ -75,7 +75,7 @@
             4,
             15
           ],
-          "gamma": 0.39051878452301025,
+          "gamma": 0.40087586641311646,
           "dtype": "int8_ternary",
           "offset": 813056,
           "size_bytes": 3840
@@ -86,7 +86,7 @@
             64,
             15
           ],
-          "gamma": 0.09866051375865936,
+          "gamma": 0.09845393151044846,
           "dtype": "int8_ternary",
           "offset": 816896,
           "size_bytes": 122880
@@ -97,7 +97,7 @@
             128,
             15
           ],
-          "gamma": 0.06987760961055756,
+          "gamma": 0.06980005651712418,
           "dtype": "int8_ternary",
           "offset": 939776,
           "size_bytes": 491520
@@ -108,7 +108,7 @@
             256,
             15
           ],
-          "gamma": 0.0494595505297184,
+          "gamma": 0.04932010546326637,
           "dtype": "int8_ternary",
           "offset": 1431296,
           "size_bytes": 1966080
@@ -119,7 +119,7 @@
             512,
             3
           ],
-          "gamma": 0.03500283136963844,
+          "gamma": 0.0348191075026989,
           "dtype": "int8_ternary",
           "offset": 3397376,
           "size_bytes": 98304
@@ -130,7 +130,7 @@
             512,
             3
           ],
-          "gamma": 0.03493108972907066,
+          "gamma": 0.035124894231557846,
           "dtype": "int8_ternary",
           "offset": 3495680,
           "size_bytes": 786432
@@ -141,437 +141,99 @@
             512,
             3
           ],
-          "gamma": 0.03490791097283363,
+          "gamma": 0.03481582924723625,
           "dtype": "int8_ternary",
           "offset": 4282112,
           "size_bytes": 786432
+        },
+        "mamba.attention_fusion.k_up": {
+          "shape": [
+            128,
+            32
+          ],
+          "gamma": 0.1403062641620636,
+          "dtype": "int8_ternary",
+          "offset": 5068544,
+          "size_bytes": 4096
+        },
+        "mamba.attention_fusion.kv_down": {
+          "shape": [
+            32,
+            128
+          ],
+          "gamma": 0.06883510947227478,
+          "dtype": "int8_ternary",
+          "offset": 5072640,
+          "size_bytes": 4096
+        },
+        "mamba.attention_fusion.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "gamma": 0.06997563689947128,
+          "dtype": "int8_ternary",
+          "offset": 5076736,
+          "size_bytes": 16384
+        },
+        "mamba.attention_fusion.q_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "gamma": 0.0696907639503479,
+          "dtype": "int8_ternary",
+          "offset": 5093120,
+          "size_bytes": 16384
+        },
+        "mamba.attention_fusion.v_up": {
+          "shape": [
+            128,
+            32
+          ],
+          "gamma": 0.1399773359298706,
+          "dtype": "int8_ternary",
+          "offset": 5109504,
+          "size_bytes": 4096
         },
         "mamba.cond_proj": {
           "shape": [
             128,
             554
           ],
-          "gamma": 0.03360360488295555,
+          "gamma": 0.03352605178952217,
           "dtype": "int8_ternary",
-          "offset": 5068544,
+          "offset": 5113600,
           "size_bytes": 70912
         },
-        "mamba.experts.0.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "gamma": 0.06952311098575592,
-          "dtype": "int8_ternary",
-          "offset": 5139456,
-          "size_bytes": 8192
-        },
-        "mamba.experts.0.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "gamma": 0.06914178282022476,
-          "dtype": "int8_ternary",
-          "offset": 5147648,
-          "size_bytes": 8192
-        },
-        "mamba.experts.0.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "gamma": 0.7860199213027954,
-          "dtype": "int8_ternary",
-          "offset": 5155840,
-          "size_bytes": 512
-        },
-        "mamba.experts.0.in_proj": {
+        "mamba.gateway.fc1": {
           "shape": [
             256,
-            128
+            554
           ],
-          "gamma": 0.06952729821205139,
+          "gamma": 0.033572275191545486,
           "dtype": "int8_ternary",
-          "offset": 5156352,
+          "offset": 5184512,
+          "size_bytes": 141824
+        },
+        "mamba.gateway.fc2": {
+          "shape": [
+            128,
+            256
+          ],
+          "gamma": 0.04977761209011078,
+          "dtype": "int8_ternary",
+          "offset": 5326336,
           "size_bytes": 32768
-        },
-        "mamba.experts.0.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "gamma": 0.07006173580884933,
-          "dtype": "int8_ternary",
-          "offset": 5189120,
-          "size_bytes": 16384
-        },
-        "mamba.experts.1.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "gamma": 0.07022471725940704,
-          "dtype": "int8_ternary",
-          "offset": 5205504,
-          "size_bytes": 8192
-        },
-        "mamba.experts.1.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "gamma": 0.06974417716264725,
-          "dtype": "int8_ternary",
-          "offset": 5213696,
-          "size_bytes": 8192
-        },
-        "mamba.experts.1.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "gamma": 0.8040640950202942,
-          "dtype": "int8_ternary",
-          "offset": 5221888,
-          "size_bytes": 512
-        },
-        "mamba.experts.1.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "gamma": 0.0698394775390625,
-          "dtype": "int8_ternary",
-          "offset": 5222400,
-          "size_bytes": 32768
-        },
-        "mamba.experts.1.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "gamma": 0.06966212391853333,
-          "dtype": "int8_ternary",
-          "offset": 5255168,
-          "size_bytes": 16384
-        },
-        "mamba.experts.2.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "gamma": 0.0693495124578476,
-          "dtype": "int8_ternary",
-          "offset": 5271552,
-          "size_bytes": 8192
-        },
-        "mamba.experts.2.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "gamma": 0.06963720917701721,
-          "dtype": "int8_ternary",
-          "offset": 5279744,
-          "size_bytes": 8192
-        },
-        "mamba.experts.2.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "gamma": 0.8401495814323425,
-          "dtype": "int8_ternary",
-          "offset": 5287936,
-          "size_bytes": 512
-        },
-        "mamba.experts.2.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "gamma": 0.06986583024263382,
-          "dtype": "int8_ternary",
-          "offset": 5288448,
-          "size_bytes": 32768
-        },
-        "mamba.experts.2.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "gamma": 0.06992176175117493,
-          "dtype": "int8_ternary",
-          "offset": 5321216,
-          "size_bytes": 16384
-        },
-        "mamba.experts.3.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "gamma": 0.06989102065563202,
-          "dtype": "int8_ternary",
-          "offset": 5337600,
-          "size_bytes": 8192
-        },
-        "mamba.experts.3.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "gamma": 0.06986295431852341,
-          "dtype": "int8_ternary",
-          "offset": 5345792,
-          "size_bytes": 8192
-        },
-        "mamba.experts.3.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "gamma": 0.7700154781341553,
-          "dtype": "int8_ternary",
-          "offset": 5353984,
-          "size_bytes": 512
-        },
-        "mamba.experts.3.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "gamma": 0.07024252414703369,
-          "dtype": "int8_ternary",
-          "offset": 5354496,
-          "size_bytes": 32768
-        },
-        "mamba.experts.3.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "gamma": 0.06910982728004456,
-          "dtype": "int8_ternary",
-          "offset": 5387264,
-          "size_bytes": 16384
-        },
-        "mamba.experts.4.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "gamma": 0.07027311623096466,
-          "dtype": "int8_ternary",
-          "offset": 5403648,
-          "size_bytes": 8192
-        },
-        "mamba.experts.4.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "gamma": 0.06907981634140015,
-          "dtype": "int8_ternary",
-          "offset": 5411840,
-          "size_bytes": 8192
-        },
-        "mamba.experts.4.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "gamma": 0.760649561882019,
-          "dtype": "int8_ternary",
-          "offset": 5420032,
-          "size_bytes": 512
-        },
-        "mamba.experts.4.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "gamma": 0.06992568075656891,
-          "dtype": "int8_ternary",
-          "offset": 5420544,
-          "size_bytes": 32768
-        },
-        "mamba.experts.4.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "gamma": 0.06947494298219681,
-          "dtype": "int8_ternary",
-          "offset": 5453312,
-          "size_bytes": 16384
-        },
-        "mamba.experts.5.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "gamma": 0.0701708123087883,
-          "dtype": "int8_ternary",
-          "offset": 5469696,
-          "size_bytes": 8192
-        },
-        "mamba.experts.5.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "gamma": 0.07044801115989685,
-          "dtype": "int8_ternary",
-          "offset": 5477888,
-          "size_bytes": 8192
-        },
-        "mamba.experts.5.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "gamma": 0.765519917011261,
-          "dtype": "int8_ternary",
-          "offset": 5486080,
-          "size_bytes": 512
-        },
-        "mamba.experts.5.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "gamma": 0.0695606917142868,
-          "dtype": "int8_ternary",
-          "offset": 5486592,
-          "size_bytes": 32768
-        },
-        "mamba.experts.5.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "gamma": 0.06964752078056335,
-          "dtype": "int8_ternary",
-          "offset": 5519360,
-          "size_bytes": 16384
-        },
-        "mamba.experts.6.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "gamma": 0.06990166753530502,
-          "dtype": "int8_ternary",
-          "offset": 5535744,
-          "size_bytes": 8192
-        },
-        "mamba.experts.6.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "gamma": 0.07067254930734634,
-          "dtype": "int8_ternary",
-          "offset": 5543936,
-          "size_bytes": 8192
-        },
-        "mamba.experts.6.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "gamma": 0.8115166425704956,
-          "dtype": "int8_ternary",
-          "offset": 5552128,
-          "size_bytes": 512
-        },
-        "mamba.experts.6.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "gamma": 0.06946961581707001,
-          "dtype": "int8_ternary",
-          "offset": 5552640,
-          "size_bytes": 32768
-        },
-        "mamba.experts.6.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "gamma": 0.07070372253656387,
-          "dtype": "int8_ternary",
-          "offset": 5585408,
-          "size_bytes": 16384
-        },
-        "mamba.experts.7.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "gamma": 0.06969846785068512,
-          "dtype": "int8_ternary",
-          "offset": 5601792,
-          "size_bytes": 8192
-        },
-        "mamba.experts.7.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "gamma": 0.06913374364376068,
-          "dtype": "int8_ternary",
-          "offset": 5609984,
-          "size_bytes": 8192
-        },
-        "mamba.experts.7.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "gamma": 0.8070400953292847,
-          "dtype": "int8_ternary",
-          "offset": 5618176,
-          "size_bytes": 512
-        },
-        "mamba.experts.7.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "gamma": 0.07024280726909637,
-          "dtype": "int8_ternary",
-          "offset": 5618688,
-          "size_bytes": 32768
-        },
-        "mamba.experts.7.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "gamma": 0.06886118650436401,
-          "dtype": "int8_ternary",
-          "offset": 5651456,
-          "size_bytes": 16384
         },
         "mamba.latent_proj": {
           "shape": [
             128,
             64
           ],
-          "gamma": 0.09944024682044983,
+          "gamma": 0.09711579233407974,
           "dtype": "int8_ternary",
-          "offset": 5667840,
+          "offset": 5359104,
           "size_bytes": 8192
         },
         "mamba.log_var_head": {
@@ -579,9 +241,9 @@
             64,
             128
           ],
-          "gamma": 0.07019738852977753,
+          "gamma": 0.06676918268203735,
           "dtype": "int8_ternary",
-          "offset": 5676032,
+          "offset": 5367296,
           "size_bytes": 8192
         },
         "mamba.mu_head": {
@@ -589,30 +251,489 @@
             64,
             128
           ],
-          "gamma": 0.07037119567394257,
+          "gamma": 0.0651625543832779,
           "dtype": "int8_ternary",
-          "offset": 5684224,
+          "offset": 5375488,
           "size_bytes": 8192
         },
-        "mamba.router_linear1": {
+        "mamba.residual_experts.0.B_proj": {
           "shape": [
             64,
             128
           ],
-          "gamma": 0.07011492550373077,
+          "gamma": 0.06991465389728546,
           "dtype": "int8_ternary",
-          "offset": 5692416,
+          "offset": 5383680,
           "size_bytes": 8192
         },
-        "mamba.router_linear2": {
+        "mamba.residual_experts.0.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.06935746967792511,
+          "dtype": "int8_ternary",
+          "offset": 5391872,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.0.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "gamma": 0.7979676723480225,
+          "dtype": "int8_ternary",
+          "offset": 5400064,
+          "size_bytes": 512
+        },
+        "mamba.residual_experts.0.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "gamma": 0.06946106255054474,
+          "dtype": "int8_ternary",
+          "offset": 5400576,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.0.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "gamma": 0.06901320815086365,
+          "dtype": "int8_ternary",
+          "offset": 5433344,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.1.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.06938987970352173,
+          "dtype": "int8_ternary",
+          "offset": 5449728,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.1.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.07051028311252594,
+          "dtype": "int8_ternary",
+          "offset": 5457920,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.1.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "gamma": 0.7979432940483093,
+          "dtype": "int8_ternary",
+          "offset": 5466112,
+          "size_bytes": 512
+        },
+        "mamba.residual_experts.1.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "gamma": 0.06974431872367859,
+          "dtype": "int8_ternary",
+          "offset": 5466624,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.1.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "gamma": 0.06942569464445114,
+          "dtype": "int8_ternary",
+          "offset": 5499392,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.2.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.07013608515262604,
+          "dtype": "int8_ternary",
+          "offset": 5515776,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.2.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.07006922364234924,
+          "dtype": "int8_ternary",
+          "offset": 5523968,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.2.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "gamma": 0.8366936445236206,
+          "dtype": "int8_ternary",
+          "offset": 5532160,
+          "size_bytes": 512
+        },
+        "mamba.residual_experts.2.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "gamma": 0.06970853358507156,
+          "dtype": "int8_ternary",
+          "offset": 5532672,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.2.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "gamma": 0.06979323923587799,
+          "dtype": "int8_ternary",
+          "offset": 5565440,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.3.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.06975118815898895,
+          "dtype": "int8_ternary",
+          "offset": 5581824,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.3.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.07082563638687134,
+          "dtype": "int8_ternary",
+          "offset": 5590016,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.3.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "gamma": 0.7742974758148193,
+          "dtype": "int8_ternary",
+          "offset": 5598208,
+          "size_bytes": 512
+        },
+        "mamba.residual_experts.3.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "gamma": 0.06975945085287094,
+          "dtype": "int8_ternary",
+          "offset": 5598720,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.3.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "gamma": 0.06962262094020844,
+          "dtype": "int8_ternary",
+          "offset": 5631488,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.4.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.07007090747356415,
+          "dtype": "int8_ternary",
+          "offset": 5647872,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.4.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.07002253085374832,
+          "dtype": "int8_ternary",
+          "offset": 5656064,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.4.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "gamma": 0.7604069113731384,
+          "dtype": "int8_ternary",
+          "offset": 5664256,
+          "size_bytes": 512
+        },
+        "mamba.residual_experts.4.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "gamma": 0.06977769732475281,
+          "dtype": "int8_ternary",
+          "offset": 5664768,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.4.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "gamma": 0.06940840184688568,
+          "dtype": "int8_ternary",
+          "offset": 5697536,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.5.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.07023656368255615,
+          "dtype": "int8_ternary",
+          "offset": 5713920,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.5.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.07075820863246918,
+          "dtype": "int8_ternary",
+          "offset": 5722112,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.5.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "gamma": 0.7743474841117859,
+          "dtype": "int8_ternary",
+          "offset": 5730304,
+          "size_bytes": 512
+        },
+        "mamba.residual_experts.5.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "gamma": 0.07011549919843674,
+          "dtype": "int8_ternary",
+          "offset": 5730816,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.5.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "gamma": 0.06989425420761108,
+          "dtype": "int8_ternary",
+          "offset": 5763584,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.6.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.06991246342658997,
+          "dtype": "int8_ternary",
+          "offset": 5779968,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.6.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.06978097558021545,
+          "dtype": "int8_ternary",
+          "offset": 5788160,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.6.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "gamma": 0.7770834565162659,
+          "dtype": "int8_ternary",
+          "offset": 5796352,
+          "size_bytes": 512
+        },
+        "mamba.residual_experts.6.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "gamma": 0.06962316483259201,
+          "dtype": "int8_ternary",
+          "offset": 5796864,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.6.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "gamma": 0.06956750899553299,
+          "dtype": "int8_ternary",
+          "offset": 5829632,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.7.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.06947354227304459,
+          "dtype": "int8_ternary",
+          "offset": 5846016,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.7.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.0692424476146698,
+          "dtype": "int8_ternary",
+          "offset": 5854208,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.7.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "gamma": 0.8248555660247803,
+          "dtype": "int8_ternary",
+          "offset": 5862400,
+          "size_bytes": 512
+        },
+        "mamba.residual_experts.7.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "gamma": 0.07014299929141998,
+          "dtype": "int8_ternary",
+          "offset": 5862912,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.7.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "gamma": 0.0702664703130722,
+          "dtype": "int8_ternary",
+          "offset": 5895680,
+          "size_bytes": 16384
+        },
+        "mamba.router.linear1": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.06913473457098007,
+          "dtype": "int8_ternary",
+          "offset": 5912064,
+          "size_bytes": 8192
+        },
+        "mamba.router.linear2": {
           "shape": [
             8,
             64
           ],
-          "gamma": 0.09665217995643616,
+          "gamma": 0.10221794247627258,
           "dtype": "int8_ternary",
-          "offset": 5700608,
+          "offset": 5920256,
           "size_bytes": 512
+        },
+        "mamba.shared_base_expert.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.07036080956459045,
+          "dtype": "int8_ternary",
+          "offset": 5920768,
+          "size_bytes": 8192
+        },
+        "mamba.shared_base_expert.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "gamma": 0.07071438431739807,
+          "dtype": "int8_ternary",
+          "offset": 5928960,
+          "size_bytes": 8192
+        },
+        "mamba.shared_base_expert.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "gamma": 0.7787688374519348,
+          "dtype": "int8_ternary",
+          "offset": 5937152,
+          "size_bytes": 512
+        },
+        "mamba.shared_base_expert.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "gamma": 0.06875699758529663,
+          "dtype": "int8_ternary",
+          "offset": 5937664,
+          "size_bytes": 32768
+        },
+        "mamba.shared_base_expert.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "gamma": 0.06947962194681168,
+          "dtype": "int8_ternary",
+          "offset": 5970432,
+          "size_bytes": 16384
         }
       }
     },
@@ -620,7 +741,7 @@
       "slice_index": 1,
       "filename": "slice_1_mobile_int4.bin",
       "description": "Tier 1: INT4 Mobile Quality (Low bandwidth / cellular)",
-      "chunk_size_bytes": 5701120,
+      "chunk_size_bytes": 5986816,
       "layers": {
         "encoder.bi_mamba.conv_bwd": {
           "shape": [
@@ -628,7 +749,7 @@
             1,
             5
           ],
-          "scale": 0.006663761101663113,
+          "scale": 0.005710752215236425,
           "dtype": "int8_delta",
           "offset": 0,
           "size_bytes": 2560
@@ -639,7 +760,7 @@
             1,
             5
           ],
-          "scale": 0.006115518510341644,
+          "scale": 0.005133465863764286,
           "dtype": "int8_delta",
           "offset": 2560,
           "size_bytes": 2560
@@ -649,7 +770,7 @@
             512,
             1024
           ],
-          "scale": 0.00025603981339372694,
+          "scale": 0.00027147383661940694,
           "dtype": "int8_delta",
           "offset": 5120,
           "size_bytes": 524288
@@ -659,7 +780,7 @@
             512,
             554
           ],
-          "scale": 0.00034483103081583977,
+          "scale": 0.00034579948987811804,
           "dtype": "int8_delta",
           "offset": 529408,
           "size_bytes": 283648
@@ -670,7 +791,7 @@
             4,
             15
           ],
-          "scale": 0.0029769407119601965,
+          "scale": 0.0030424315482378006,
           "dtype": "int8_delta",
           "offset": 813056,
           "size_bytes": 3840
@@ -681,7 +802,7 @@
             64,
             15
           ],
-          "scale": 0.000931307440623641,
+          "scale": 0.001064265496097505,
           "dtype": "int8_delta",
           "offset": 816896,
           "size_bytes": 122880
@@ -692,7 +813,7 @@
             128,
             15
           ],
-          "scale": 0.000705595244653523,
+          "scale": 0.0006784401484765112,
           "dtype": "int8_delta",
           "offset": 939776,
           "size_bytes": 491520
@@ -703,7 +824,7 @@
             256,
             15
           ],
-          "scale": 0.000534629391040653,
+          "scale": 0.0005358185735531151,
           "dtype": "int8_delta",
           "offset": 1431296,
           "size_bytes": 1966080
@@ -714,7 +835,7 @@
             512,
             3
           ],
-          "scale": 0.0003176643222104758,
+          "scale": 0.0003104060306213796,
           "dtype": "int8_delta",
           "offset": 3397376,
           "size_bytes": 98304
@@ -725,7 +846,7 @@
             512,
             3
           ],
-          "scale": 0.0003687459684442729,
+          "scale": 0.0003849732456728816,
           "dtype": "int8_delta",
           "offset": 3495680,
           "size_bytes": 786432
@@ -736,437 +857,99 @@
             512,
             3
           ],
-          "scale": 0.00036692575667984784,
+          "scale": 0.00036379796802066267,
           "dtype": "int8_delta",
           "offset": 4282112,
           "size_bytes": 786432
+        },
+        "mamba.attention_fusion.k_up": {
+          "shape": [
+            128,
+            32
+          ],
+          "scale": 0.0010778201976791024,
+          "dtype": "int8_delta",
+          "offset": 5068544,
+          "size_bytes": 4096
+        },
+        "mamba.attention_fusion.kv_down": {
+          "shape": [
+            32,
+            128
+          ],
+          "scale": 0.0005619077128358185,
+          "dtype": "int8_delta",
+          "offset": 5072640,
+          "size_bytes": 4096
+        },
+        "mamba.attention_fusion.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.0006223469972610474,
+          "dtype": "int8_delta",
+          "offset": 5076736,
+          "size_bytes": 16384
+        },
+        "mamba.attention_fusion.q_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.0006222196971066296,
+          "dtype": "int8_delta",
+          "offset": 5093120,
+          "size_bytes": 16384
+        },
+        "mamba.attention_fusion.v_up": {
+          "shape": [
+            128,
+            32
+          ],
+          "scale": 0.001203797641210258,
+          "dtype": "int8_delta",
+          "offset": 5109504,
+          "size_bytes": 4096
         },
         "mamba.cond_proj": {
           "shape": [
             128,
             554
           ],
-          "scale": 0.00030845339642837644,
+          "scale": 0.00031792069785296917,
           "dtype": "int8_delta",
-          "offset": 5068544,
+          "offset": 5113600,
           "size_bytes": 70912
         },
-        "mamba.experts.0.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.0006847874028608203,
-          "dtype": "int8_delta",
-          "offset": 5139456,
-          "size_bytes": 8192
-        },
-        "mamba.experts.0.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.0006026436458341777,
-          "dtype": "int8_delta",
-          "offset": 5147648,
-          "size_bytes": 8192
-        },
-        "mamba.experts.0.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 0.006145026534795761,
-          "dtype": "int8_delta",
-          "offset": 5155840,
-          "size_bytes": 512
-        },
-        "mamba.experts.0.in_proj": {
+        "mamba.gateway.fc1": {
           "shape": [
             256,
-            128
+            554
           ],
-          "scale": 0.0006157461903057992,
+          "scale": 0.00029756338335573673,
           "dtype": "int8_delta",
-          "offset": 5156352,
+          "offset": 5184512,
+          "size_bytes": 141824
+        },
+        "mamba.gateway.fc2": {
+          "shape": [
+            128,
+            256
+          ],
+          "scale": 0.0004190885811112821,
+          "dtype": "int8_delta",
+          "offset": 5326336,
           "size_bytes": 32768
-        },
-        "mamba.experts.0.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 0.0006127057131379843,
-          "dtype": "int8_delta",
-          "offset": 5189120,
-          "size_bytes": 16384
-        },
-        "mamba.experts.1.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.0006129461689852178,
-          "dtype": "int8_delta",
-          "offset": 5205504,
-          "size_bytes": 8192
-        },
-        "mamba.experts.1.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.0005076765664853156,
-          "dtype": "int8_delta",
-          "offset": 5213696,
-          "size_bytes": 8192
-        },
-        "mamba.experts.1.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 0.006098544225096703,
-          "dtype": "int8_delta",
-          "offset": 5221888,
-          "size_bytes": 512
-        },
-        "mamba.experts.1.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "scale": 0.0006903701578266919,
-          "dtype": "int8_delta",
-          "offset": 5222400,
-          "size_bytes": 32768
-        },
-        "mamba.experts.1.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 0.0006106490618549287,
-          "dtype": "int8_delta",
-          "offset": 5255168,
-          "size_bytes": 16384
-        },
-        "mamba.experts.2.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.000541668152436614,
-          "dtype": "int8_delta",
-          "offset": 5271552,
-          "size_bytes": 8192
-        },
-        "mamba.experts.2.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.0006022563320584595,
-          "dtype": "int8_delta",
-          "offset": 5279744,
-          "size_bytes": 8192
-        },
-        "mamba.experts.2.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 0.00546614732593298,
-          "dtype": "int8_delta",
-          "offset": 5287936,
-          "size_bytes": 512
-        },
-        "mamba.experts.2.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "scale": 0.000797584536485374,
-          "dtype": "int8_delta",
-          "offset": 5288448,
-          "size_bytes": 32768
-        },
-        "mamba.experts.2.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 0.0006960426107980311,
-          "dtype": "int8_delta",
-          "offset": 5321216,
-          "size_bytes": 16384
-        },
-        "mamba.experts.3.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.0006050671800039709,
-          "dtype": "int8_delta",
-          "offset": 5337600,
-          "size_bytes": 8192
-        },
-        "mamba.experts.3.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.0005841482779942453,
-          "dtype": "int8_delta",
-          "offset": 5345792,
-          "size_bytes": 8192
-        },
-        "mamba.experts.3.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 0.006588867399841547,
-          "dtype": "int8_delta",
-          "offset": 5353984,
-          "size_bytes": 512
-        },
-        "mamba.experts.3.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "scale": 0.0005654751439578831,
-          "dtype": "int8_delta",
-          "offset": 5354496,
-          "size_bytes": 32768
-        },
-        "mamba.experts.3.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 0.0006023786845616996,
-          "dtype": "int8_delta",
-          "offset": 5387264,
-          "size_bytes": 16384
-        },
-        "mamba.experts.4.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.0006931855459697545,
-          "dtype": "int8_delta",
-          "offset": 5403648,
-          "size_bytes": 8192
-        },
-        "mamba.experts.4.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.0006469947402365506,
-          "dtype": "int8_delta",
-          "offset": 5411840,
-          "size_bytes": 8192
-        },
-        "mamba.experts.4.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 0.006109706126153469,
-          "dtype": "int8_delta",
-          "offset": 5420032,
-          "size_bytes": 512
-        },
-        "mamba.experts.4.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "scale": 0.0006285313866101205,
-          "dtype": "int8_delta",
-          "offset": 5420544,
-          "size_bytes": 32768
-        },
-        "mamba.experts.4.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 0.0006916989223100245,
-          "dtype": "int8_delta",
-          "offset": 5453312,
-          "size_bytes": 16384
-        },
-        "mamba.experts.5.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.0005883441190235317,
-          "dtype": "int8_delta",
-          "offset": 5469696,
-          "size_bytes": 8192
-        },
-        "mamba.experts.5.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.0006332523189485073,
-          "dtype": "int8_delta",
-          "offset": 5477888,
-          "size_bytes": 8192
-        },
-        "mamba.experts.5.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 0.005275371950119734,
-          "dtype": "int8_delta",
-          "offset": 5486080,
-          "size_bytes": 512
-        },
-        "mamba.experts.5.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "scale": 0.0006454429822042584,
-          "dtype": "int8_delta",
-          "offset": 5486592,
-          "size_bytes": 32768
-        },
-        "mamba.experts.5.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 0.0006637814803980291,
-          "dtype": "int8_delta",
-          "offset": 5519360,
-          "size_bytes": 16384
-        },
-        "mamba.experts.6.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.0006491642561741173,
-          "dtype": "int8_delta",
-          "offset": 5535744,
-          "size_bytes": 8192
-        },
-        "mamba.experts.6.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.0006802853313274682,
-          "dtype": "int8_delta",
-          "offset": 5543936,
-          "size_bytes": 8192
-        },
-        "mamba.experts.6.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 0.005311849992722273,
-          "dtype": "int8_delta",
-          "offset": 5552128,
-          "size_bytes": 512
-        },
-        "mamba.experts.6.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "scale": 0.0006197603070177138,
-          "dtype": "int8_delta",
-          "offset": 5552640,
-          "size_bytes": 32768
-        },
-        "mamba.experts.6.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 0.0005736678722314537,
-          "dtype": "int8_delta",
-          "offset": 5585408,
-          "size_bytes": 16384
-        },
-        "mamba.experts.7.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.0005203380715101957,
-          "dtype": "int8_delta",
-          "offset": 5601792,
-          "size_bytes": 8192
-        },
-        "mamba.experts.7.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.0005663243937306106,
-          "dtype": "int8_delta",
-          "offset": 5609984,
-          "size_bytes": 8192
-        },
-        "mamba.experts.7.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 0.005357682704925537,
-          "dtype": "int8_delta",
-          "offset": 5618176,
-          "size_bytes": 512
-        },
-        "mamba.experts.7.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "scale": 0.0005906950100325048,
-          "dtype": "int8_delta",
-          "offset": 5618688,
-          "size_bytes": 32768
-        },
-        "mamba.experts.7.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 0.0005839159712195396,
-          "dtype": "int8_delta",
-          "offset": 5651456,
-          "size_bytes": 16384
         },
         "mamba.latent_proj": {
           "shape": [
             128,
             64
           ],
-          "scale": 0.000810544122941792,
+          "scale": 0.0008442825055681169,
           "dtype": "int8_delta",
-          "offset": 5667840,
+          "offset": 5359104,
           "size_bytes": 8192
         },
         "mamba.log_var_head": {
@@ -1174,9 +957,9 @@
             64,
             128
           ],
-          "scale": 0.0005688154487870634,
+          "scale": 0.0006179353222250938,
           "dtype": "int8_delta",
-          "offset": 5676032,
+          "offset": 5367296,
           "size_bytes": 8192
         },
         "mamba.mu_head": {
@@ -1184,30 +967,489 @@
             64,
             128
           ],
-          "scale": 0.0005960363196209073,
+          "scale": 0.0005257202428765595,
           "dtype": "int8_delta",
-          "offset": 5684224,
+          "offset": 5375488,
           "size_bytes": 8192
         },
-        "mamba.router_linear1": {
+        "mamba.residual_experts.0.B_proj": {
           "shape": [
             64,
             128
           ],
-          "scale": 0.0008073716307990253,
+          "scale": 0.0005722863716073334,
           "dtype": "int8_delta",
-          "offset": 5692416,
+          "offset": 5383680,
           "size_bytes": 8192
         },
-        "mamba.router_linear2": {
+        "mamba.residual_experts.0.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0006239625508897007,
+          "dtype": "int8_delta",
+          "offset": 5391872,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.0.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.005405998323112726,
+          "dtype": "int8_delta",
+          "offset": 5400064,
+          "size_bytes": 512
+        },
+        "mamba.residual_experts.0.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.0005857202922925353,
+          "dtype": "int8_delta",
+          "offset": 5400576,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.0.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.0006328917806968093,
+          "dtype": "int8_delta",
+          "offset": 5433344,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.1.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0006109850364737213,
+          "dtype": "int8_delta",
+          "offset": 5449728,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.1.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0006374521763063967,
+          "dtype": "int8_delta",
+          "offset": 5457920,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.1.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.005434687249362469,
+          "dtype": "int8_delta",
+          "offset": 5466112,
+          "size_bytes": 512
+        },
+        "mamba.residual_experts.1.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.0006892529199831188,
+          "dtype": "int8_delta",
+          "offset": 5466624,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.1.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.000650180212687701,
+          "dtype": "int8_delta",
+          "offset": 5499392,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.2.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0005499320686794817,
+          "dtype": "int8_delta",
+          "offset": 5515776,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.2.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0006106787477619946,
+          "dtype": "int8_delta",
+          "offset": 5523968,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.2.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.005397533532232046,
+          "dtype": "int8_delta",
+          "offset": 5532160,
+          "size_bytes": 512
+        },
+        "mamba.residual_experts.2.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.0006050746305845678,
+          "dtype": "int8_delta",
+          "offset": 5532672,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.2.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.0006090710521675646,
+          "dtype": "int8_delta",
+          "offset": 5565440,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.3.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0006776353693567216,
+          "dtype": "int8_delta",
+          "offset": 5581824,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.3.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0005433876067399979,
+          "dtype": "int8_delta",
+          "offset": 5590016,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.3.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.005828717723488808,
+          "dtype": "int8_delta",
+          "offset": 5598208,
+          "size_bytes": 512
+        },
+        "mamba.residual_experts.3.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.0006008573691360652,
+          "dtype": "int8_delta",
+          "offset": 5598720,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.3.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.0006853447412140667,
+          "dtype": "int8_delta",
+          "offset": 5631488,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.4.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0005786230321973562,
+          "dtype": "int8_delta",
+          "offset": 5647872,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.4.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0005950126214884222,
+          "dtype": "int8_delta",
+          "offset": 5656064,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.4.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.005567914340645075,
+          "dtype": "int8_delta",
+          "offset": 5664256,
+          "size_bytes": 512
+        },
+        "mamba.residual_experts.4.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.0006620886852033436,
+          "dtype": "int8_delta",
+          "offset": 5664768,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.4.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.0006045039044693112,
+          "dtype": "int8_delta",
+          "offset": 5697536,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.5.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0005503384163603187,
+          "dtype": "int8_delta",
+          "offset": 5713920,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.5.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0005599346477538347,
+          "dtype": "int8_delta",
+          "offset": 5722112,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.5.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.004533638246357441,
+          "dtype": "int8_delta",
+          "offset": 5730304,
+          "size_bytes": 512
+        },
+        "mamba.residual_experts.5.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.000581684522330761,
+          "dtype": "int8_delta",
+          "offset": 5730816,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.5.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.0006363919819705188,
+          "dtype": "int8_delta",
+          "offset": 5763584,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.6.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0006193834124132991,
+          "dtype": "int8_delta",
+          "offset": 5779968,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.6.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0006537546869367361,
+          "dtype": "int8_delta",
+          "offset": 5788160,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.6.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.0052178166806697845,
+          "dtype": "int8_delta",
+          "offset": 5796352,
+          "size_bytes": 512
+        },
+        "mamba.residual_experts.6.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.0007327289786189795,
+          "dtype": "int8_delta",
+          "offset": 5796864,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.6.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.0006396055105142295,
+          "dtype": "int8_delta",
+          "offset": 5829632,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.7.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0006972289993427694,
+          "dtype": "int8_delta",
+          "offset": 5846016,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.7.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0005052576307207346,
+          "dtype": "int8_delta",
+          "offset": 5854208,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.7.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.005267597269266844,
+          "dtype": "int8_delta",
+          "offset": 5862400,
+          "size_bytes": 512
+        },
+        "mamba.residual_experts.7.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.0006265509291552007,
+          "dtype": "int8_delta",
+          "offset": 5862912,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.7.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.0005756317405030131,
+          "dtype": "int8_delta",
+          "offset": 5895680,
+          "size_bytes": 16384
+        },
+        "mamba.router.linear1": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0005786896217614412,
+          "dtype": "int8_delta",
+          "offset": 5912064,
+          "size_bytes": 8192
+        },
+        "mamba.router.linear2": {
           "shape": [
             8,
             64
           ],
-          "scale": 0.000792361912317574,
+          "scale": 0.0007328410865738988,
           "dtype": "int8_delta",
-          "offset": 5700608,
+          "offset": 5920256,
           "size_bytes": 512
+        },
+        "mamba.shared_base_expert.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0005472449120134115,
+          "dtype": "int8_delta",
+          "offset": 5920768,
+          "size_bytes": 8192
+        },
+        "mamba.shared_base_expert.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0005438312073238194,
+          "dtype": "int8_delta",
+          "offset": 5928960,
+          "size_bytes": 8192
+        },
+        "mamba.shared_base_expert.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.004653443116694689,
+          "dtype": "int8_delta",
+          "offset": 5937152,
+          "size_bytes": 512
+        },
+        "mamba.shared_base_expert.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.000647548062261194,
+          "dtype": "int8_delta",
+          "offset": 5937664,
+          "size_bytes": 32768
+        },
+        "mamba.shared_base_expert.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.000608132453635335,
+          "dtype": "int8_delta",
+          "offset": 5970432,
+          "size_bytes": 16384
         }
       }
     },
@@ -1215,7 +1457,7 @@
       "slice_index": 2,
       "filename": "slice_2_standard_int8.bin",
       "description": "Tier 2: INT8 / BF16 Adaptive Web Default (~95% perceptual equivalence)",
-      "chunk_size_bytes": 5701120,
+      "chunk_size_bytes": 5986816,
       "layers": {
         "encoder.bi_mamba.conv_bwd": {
           "shape": [
@@ -1223,7 +1465,7 @@
             1,
             5
           ],
-          "scale": 0.0032193006481975317,
+          "scale": 0.0027290398720651865,
           "dtype": "int8_delta",
           "offset": 0,
           "size_bytes": 2560
@@ -1234,7 +1476,7 @@
             1,
             5
           ],
-          "scale": 0.0028424281626939774,
+          "scale": 0.0028987526893615723,
           "dtype": "int8_delta",
           "offset": 2560,
           "size_bytes": 2560
@@ -1244,7 +1486,7 @@
             512,
             1024
           ],
-          "scale": 0.00014579576964024454,
+          "scale": 0.00014765083324164152,
           "dtype": "int8_delta",
           "offset": 5120,
           "size_bytes": 524288
@@ -1254,7 +1496,7 @@
             512,
             554
           ],
-          "scale": 0.00016906073142308742,
+          "scale": 0.00019560204236768186,
           "dtype": "int8_delta",
           "offset": 529408,
           "size_bytes": 283648
@@ -1265,7 +1507,7 @@
             4,
             15
           ],
-          "scale": 0.0015444271266460419,
+          "scale": 0.0016848999075591564,
           "dtype": "int8_delta",
           "offset": 813056,
           "size_bytes": 3840
@@ -1276,7 +1518,7 @@
             64,
             15
           ],
-          "scale": 0.0004878990584984422,
+          "scale": 0.0005391994491219521,
           "dtype": "int8_delta",
           "offset": 816896,
           "size_bytes": 122880
@@ -1287,7 +1529,7 @@
             128,
             15
           ],
-          "scale": 0.00034798544947989285,
+          "scale": 0.0003591079148463905,
           "dtype": "int8_delta",
           "offset": 939776,
           "size_bytes": 491520
@@ -1298,7 +1540,7 @@
             256,
             15
           ],
-          "scale": 0.00027307996060699224,
+          "scale": 0.0003042648022528738,
           "dtype": "int8_delta",
           "offset": 1431296,
           "size_bytes": 1966080
@@ -1309,7 +1551,7 @@
             512,
             3
           ],
-          "scale": 0.0001700445864116773,
+          "scale": 0.00017762223433237523,
           "dtype": "int8_delta",
           "offset": 3397376,
           "size_bytes": 98304
@@ -1320,7 +1562,7 @@
             512,
             3
           ],
-          "scale": 0.00017674943956080824,
+          "scale": 0.0002233183040516451,
           "dtype": "int8_delta",
           "offset": 3495680,
           "size_bytes": 786432
@@ -1331,437 +1573,99 @@
             512,
             3
           ],
-          "scale": 0.0001831556437537074,
+          "scale": 0.0001960466761374846,
           "dtype": "int8_delta",
           "offset": 4282112,
           "size_bytes": 786432
+        },
+        "mamba.attention_fusion.k_up": {
+          "shape": [
+            128,
+            32
+          ],
+          "scale": 0.0005214400007389486,
+          "dtype": "int8_delta",
+          "offset": 5068544,
+          "size_bytes": 4096
+        },
+        "mamba.attention_fusion.kv_down": {
+          "shape": [
+            32,
+            128
+          ],
+          "scale": 0.0002632392861414701,
+          "dtype": "int8_delta",
+          "offset": 5072640,
+          "size_bytes": 4096
+        },
+        "mamba.attention_fusion.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.00029630452627316117,
+          "dtype": "int8_delta",
+          "offset": 5076736,
+          "size_bytes": 16384
+        },
+        "mamba.attention_fusion.q_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.00028744840528815985,
+          "dtype": "int8_delta",
+          "offset": 5093120,
+          "size_bytes": 16384
+        },
+        "mamba.attention_fusion.v_up": {
+          "shape": [
+            128,
+            32
+          ],
+          "scale": 0.0005145241157151759,
+          "dtype": "int8_delta",
+          "offset": 5109504,
+          "size_bytes": 4096
         },
         "mamba.cond_proj": {
           "shape": [
             128,
             554
           ],
-          "scale": 0.0001575647183926776,
+          "scale": 0.00018392120546195656,
           "dtype": "int8_delta",
-          "offset": 5068544,
+          "offset": 5113600,
           "size_bytes": 70912
         },
-        "mamba.experts.0.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.00030581647297367454,
-          "dtype": "int8_delta",
-          "offset": 5139456,
-          "size_bytes": 8192
-        },
-        "mamba.experts.0.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.0003475976118352264,
-          "dtype": "int8_delta",
-          "offset": 5147648,
-          "size_bytes": 8192
-        },
-        "mamba.experts.0.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 0.0023527394514530897,
-          "dtype": "int8_delta",
-          "offset": 5155840,
-          "size_bytes": 512
-        },
-        "mamba.experts.0.in_proj": {
+        "mamba.gateway.fc1": {
           "shape": [
             256,
-            128
+            554
           ],
-          "scale": 0.00032078303047455847,
+          "scale": 0.00017497316002845764,
           "dtype": "int8_delta",
-          "offset": 5156352,
+          "offset": 5184512,
+          "size_bytes": 141824
+        },
+        "mamba.gateway.fc2": {
+          "shape": [
+            128,
+            256
+          ],
+          "scale": 0.00019830273231491446,
+          "dtype": "int8_delta",
+          "offset": 5326336,
           "size_bytes": 32768
-        },
-        "mamba.experts.0.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 0.0003107261727564037,
-          "dtype": "int8_delta",
-          "offset": 5189120,
-          "size_bytes": 16384
-        },
-        "mamba.experts.1.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.00028413761174306273,
-          "dtype": "int8_delta",
-          "offset": 5205504,
-          "size_bytes": 8192
-        },
-        "mamba.experts.1.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.00028003694023936987,
-          "dtype": "int8_delta",
-          "offset": 5213696,
-          "size_bytes": 8192
-        },
-        "mamba.experts.1.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 0.0026215421967208385,
-          "dtype": "int8_delta",
-          "offset": 5221888,
-          "size_bytes": 512
-        },
-        "mamba.experts.1.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "scale": 0.0003084631753154099,
-          "dtype": "int8_delta",
-          "offset": 5222400,
-          "size_bytes": 32768
-        },
-        "mamba.experts.1.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 0.0002989771601278335,
-          "dtype": "int8_delta",
-          "offset": 5255168,
-          "size_bytes": 16384
-        },
-        "mamba.experts.2.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.0002792700252030045,
-          "dtype": "int8_delta",
-          "offset": 5271552,
-          "size_bytes": 8192
-        },
-        "mamba.experts.2.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.0003050013037864119,
-          "dtype": "int8_delta",
-          "offset": 5279744,
-          "size_bytes": 8192
-        },
-        "mamba.experts.2.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 0.0029705099295824766,
-          "dtype": "int8_delta",
-          "offset": 5287936,
-          "size_bytes": 512
-        },
-        "mamba.experts.2.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "scale": 0.0003146592353004962,
-          "dtype": "int8_delta",
-          "offset": 5288448,
-          "size_bytes": 32768
-        },
-        "mamba.experts.2.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 0.00032377708703279495,
-          "dtype": "int8_delta",
-          "offset": 5321216,
-          "size_bytes": 16384
-        },
-        "mamba.experts.3.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.00026020838413387537,
-          "dtype": "int8_delta",
-          "offset": 5337600,
-          "size_bytes": 8192
-        },
-        "mamba.experts.3.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.0002612487296573818,
-          "dtype": "int8_delta",
-          "offset": 5345792,
-          "size_bytes": 8192
-        },
-        "mamba.experts.3.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 0.0028098842594772577,
-          "dtype": "int8_delta",
-          "offset": 5353984,
-          "size_bytes": 512
-        },
-        "mamba.experts.3.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "scale": 0.00029368652030825615,
-          "dtype": "int8_delta",
-          "offset": 5354496,
-          "size_bytes": 32768
-        },
-        "mamba.experts.3.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 0.00031280791154131293,
-          "dtype": "int8_delta",
-          "offset": 5387264,
-          "size_bytes": 16384
-        },
-        "mamba.experts.4.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.00033989359508268535,
-          "dtype": "int8_delta",
-          "offset": 5403648,
-          "size_bytes": 8192
-        },
-        "mamba.experts.4.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.00026609236374497414,
-          "dtype": "int8_delta",
-          "offset": 5411840,
-          "size_bytes": 8192
-        },
-        "mamba.experts.4.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 0.002374871401116252,
-          "dtype": "int8_delta",
-          "offset": 5420032,
-          "size_bytes": 512
-        },
-        "mamba.experts.4.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "scale": 0.00030859236721880734,
-          "dtype": "int8_delta",
-          "offset": 5420544,
-          "size_bytes": 32768
-        },
-        "mamba.experts.4.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 0.0003045532794203609,
-          "dtype": "int8_delta",
-          "offset": 5453312,
-          "size_bytes": 16384
-        },
-        "mamba.experts.5.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.0002730361884459853,
-          "dtype": "int8_delta",
-          "offset": 5469696,
-          "size_bytes": 8192
-        },
-        "mamba.experts.5.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.00026180068380199373,
-          "dtype": "int8_delta",
-          "offset": 5477888,
-          "size_bytes": 8192
-        },
-        "mamba.experts.5.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 0.003004765138030052,
-          "dtype": "int8_delta",
-          "offset": 5486080,
-          "size_bytes": 512
-        },
-        "mamba.experts.5.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "scale": 0.0003176779136992991,
-          "dtype": "int8_delta",
-          "offset": 5486592,
-          "size_bytes": 32768
-        },
-        "mamba.experts.5.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 0.0003024851612281054,
-          "dtype": "int8_delta",
-          "offset": 5519360,
-          "size_bytes": 16384
-        },
-        "mamba.experts.6.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.00031165708787739277,
-          "dtype": "int8_delta",
-          "offset": 5535744,
-          "size_bytes": 8192
-        },
-        "mamba.experts.6.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.00031637793290428817,
-          "dtype": "int8_delta",
-          "offset": 5543936,
-          "size_bytes": 8192
-        },
-        "mamba.experts.6.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 0.002555512823164463,
-          "dtype": "int8_delta",
-          "offset": 5552128,
-          "size_bytes": 512
-        },
-        "mamba.experts.6.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "scale": 0.0002923619467765093,
-          "dtype": "int8_delta",
-          "offset": 5552640,
-          "size_bytes": 32768
-        },
-        "mamba.experts.6.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 0.0002975700481329113,
-          "dtype": "int8_delta",
-          "offset": 5585408,
-          "size_bytes": 16384
-        },
-        "mamba.experts.7.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.0002566137700341642,
-          "dtype": "int8_delta",
-          "offset": 5601792,
-          "size_bytes": 8192
-        },
-        "mamba.experts.7.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 0.000289810704998672,
-          "dtype": "int8_delta",
-          "offset": 5609984,
-          "size_bytes": 8192
-        },
-        "mamba.experts.7.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 0.002657032571732998,
-          "dtype": "int8_delta",
-          "offset": 5618176,
-          "size_bytes": 512
-        },
-        "mamba.experts.7.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "scale": 0.00031802550074644387,
-          "dtype": "int8_delta",
-          "offset": 5618688,
-          "size_bytes": 32768
-        },
-        "mamba.experts.7.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 0.0002991973306052387,
-          "dtype": "int8_delta",
-          "offset": 5651456,
-          "size_bytes": 16384
         },
         "mamba.latent_proj": {
           "shape": [
             128,
             64
           ],
-          "scale": 0.00045063995639793575,
+          "scale": 0.0004045088426209986,
           "dtype": "int8_delta",
-          "offset": 5667840,
+          "offset": 5359104,
           "size_bytes": 8192
         },
         "mamba.log_var_head": {
@@ -1769,9 +1673,9 @@
             64,
             128
           ],
-          "scale": 0.00027327288989908993,
+          "scale": 0.00031906639924272895,
           "dtype": "int8_delta",
-          "offset": 5676032,
+          "offset": 5367296,
           "size_bytes": 8192
         },
         "mamba.mu_head": {
@@ -1779,30 +1683,489 @@
             64,
             128
           ],
-          "scale": 0.0002787002013064921,
+          "scale": 0.0003072424733545631,
           "dtype": "int8_delta",
-          "offset": 5684224,
+          "offset": 5375488,
           "size_bytes": 8192
         },
-        "mamba.router_linear1": {
+        "mamba.residual_experts.0.B_proj": {
           "shape": [
             64,
             128
           ],
-          "scale": 0.0002691347326617688,
+          "scale": 0.00029666689806617796,
           "dtype": "int8_delta",
-          "offset": 5692416,
+          "offset": 5383680,
           "size_bytes": 8192
         },
-        "mamba.router_linear2": {
+        "mamba.residual_experts.0.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.00028801849111914635,
+          "dtype": "int8_delta",
+          "offset": 5391872,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.0.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.0024696066975593567,
+          "dtype": "int8_delta",
+          "offset": 5400064,
+          "size_bytes": 512
+        },
+        "mamba.residual_experts.0.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.00031099931220524013,
+          "dtype": "int8_delta",
+          "offset": 5400576,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.0.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.0002834019251167774,
+          "dtype": "int8_delta",
+          "offset": 5433344,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.1.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.00026666399207897484,
+          "dtype": "int8_delta",
+          "offset": 5449728,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.1.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0002651074028108269,
+          "dtype": "int8_delta",
+          "offset": 5457920,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.1.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.0031899481546133757,
+          "dtype": "int8_delta",
+          "offset": 5466112,
+          "size_bytes": 512
+        },
+        "mamba.residual_experts.1.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.0003125323564745486,
+          "dtype": "int8_delta",
+          "offset": 5466624,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.1.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.00028928599203936756,
+          "dtype": "int8_delta",
+          "offset": 5499392,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.2.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.00028870670939795673,
+          "dtype": "int8_delta",
+          "offset": 5515776,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.2.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0002964476589113474,
+          "dtype": "int8_delta",
+          "offset": 5523968,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.2.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.002684398088604212,
+          "dtype": "int8_delta",
+          "offset": 5532160,
+          "size_bytes": 512
+        },
+        "mamba.residual_experts.2.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.0003264765255153179,
+          "dtype": "int8_delta",
+          "offset": 5532672,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.2.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.0003422292647883296,
+          "dtype": "int8_delta",
+          "offset": 5565440,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.3.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0003318258677609265,
+          "dtype": "int8_delta",
+          "offset": 5581824,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.3.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0002610674418974668,
+          "dtype": "int8_delta",
+          "offset": 5590016,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.3.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.0027149850502610207,
+          "dtype": "int8_delta",
+          "offset": 5598208,
+          "size_bytes": 512
+        },
+        "mamba.residual_experts.3.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.0003296470968052745,
+          "dtype": "int8_delta",
+          "offset": 5598720,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.3.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.0003021098382305354,
+          "dtype": "int8_delta",
+          "offset": 5631488,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.4.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.000311146053718403,
+          "dtype": "int8_delta",
+          "offset": 5647872,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.4.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0003123348287772387,
+          "dtype": "int8_delta",
+          "offset": 5656064,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.4.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.0027673414442688227,
+          "dtype": "int8_delta",
+          "offset": 5664256,
+          "size_bytes": 512
+        },
+        "mamba.residual_experts.4.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.00030691688880324364,
+          "dtype": "int8_delta",
+          "offset": 5664768,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.4.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.00031275535002350807,
+          "dtype": "int8_delta",
+          "offset": 5697536,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.5.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.000296297570457682,
+          "dtype": "int8_delta",
+          "offset": 5713920,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.5.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.000299291976261884,
+          "dtype": "int8_delta",
+          "offset": 5722112,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.5.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.0027692378498613834,
+          "dtype": "int8_delta",
+          "offset": 5730304,
+          "size_bytes": 512
+        },
+        "mamba.residual_experts.5.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.0003552252019289881,
+          "dtype": "int8_delta",
+          "offset": 5730816,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.5.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.00029633412486873567,
+          "dtype": "int8_delta",
+          "offset": 5763584,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.6.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.00031676117214374244,
+          "dtype": "int8_delta",
+          "offset": 5779968,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.6.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.00027193097048439085,
+          "dtype": "int8_delta",
+          "offset": 5788160,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.6.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.0029071655590087175,
+          "dtype": "int8_delta",
+          "offset": 5796352,
+          "size_bytes": 512
+        },
+        "mamba.residual_experts.6.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.00032378072501160204,
+          "dtype": "int8_delta",
+          "offset": 5796864,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.6.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.00030662782955914736,
+          "dtype": "int8_delta",
+          "offset": 5829632,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.7.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0002919051912613213,
+          "dtype": "int8_delta",
+          "offset": 5846016,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.7.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.0003023396129719913,
+          "dtype": "int8_delta",
+          "offset": 5854208,
+          "size_bytes": 8192
+        },
+        "mamba.residual_experts.7.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.002762633841484785,
+          "dtype": "int8_delta",
+          "offset": 5862400,
+          "size_bytes": 512
+        },
+        "mamba.residual_experts.7.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.00034105489612556994,
+          "dtype": "int8_delta",
+          "offset": 5862912,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.7.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.0003169569536112249,
+          "dtype": "int8_delta",
+          "offset": 5895680,
+          "size_bytes": 16384
+        },
+        "mamba.router.linear1": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.00027890675119124353,
+          "dtype": "int8_delta",
+          "offset": 5912064,
+          "size_bytes": 8192
+        },
+        "mamba.router.linear2": {
           "shape": [
             8,
             64
           ],
-          "scale": 0.0003370970662217587,
+          "scale": 0.00033715044264681637,
           "dtype": "int8_delta",
-          "offset": 5700608,
+          "offset": 5920256,
           "size_bytes": 512
+        },
+        "mamba.shared_base_expert.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.00028377986745908856,
+          "dtype": "int8_delta",
+          "offset": 5920768,
+          "size_bytes": 8192
+        },
+        "mamba.shared_base_expert.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 0.00028628320433199406,
+          "dtype": "int8_delta",
+          "offset": 5928960,
+          "size_bytes": 8192
+        },
+        "mamba.shared_base_expert.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 0.0029697928112000227,
+          "dtype": "int8_delta",
+          "offset": 5937152,
+          "size_bytes": 512
+        },
+        "mamba.shared_base_expert.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 0.0003021887387149036,
+          "dtype": "int8_delta",
+          "offset": 5937664,
+          "size_bytes": 32768
+        },
+        "mamba.shared_base_expert.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 0.00031882160692475736,
+          "dtype": "int8_delta",
+          "offset": 5970432,
+          "size_bytes": 16384
         }
       }
     },
@@ -1810,7 +2173,7 @@
       "slice_index": 3,
       "filename": "slice_3_studio_int16.bin",
       "description": "Tier 3: INT16 / FP16 Studio High-Fidelity",
-      "chunk_size_bytes": 11402240,
+      "chunk_size_bytes": 11973632,
       "layers": {
         "encoder.bi_mamba.conv_bwd": {
           "shape": [
@@ -1931,6 +2294,56 @@
           "offset": 8564224,
           "size_bytes": 1572864
         },
+        "mamba.attention_fusion.k_up": {
+          "shape": [
+            128,
+            32
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10137088,
+          "size_bytes": 8192
+        },
+        "mamba.attention_fusion.kv_down": {
+          "shape": [
+            32,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10145280,
+          "size_bytes": 8192
+        },
+        "mamba.attention_fusion.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10153472,
+          "size_bytes": 32768
+        },
+        "mamba.attention_fusion.q_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10186240,
+          "size_bytes": 32768
+        },
+        "mamba.attention_fusion.v_up": {
+          "shape": [
+            128,
+            32
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10219008,
+          "size_bytes": 8192
+        },
         "mamba.cond_proj": {
           "shape": [
             128,
@@ -1938,416 +2351,28 @@
           ],
           "scale": 1.0,
           "dtype": "float16",
-          "offset": 10137088,
+          "offset": 10227200,
           "size_bytes": 141824
         },
-        "mamba.experts.0.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 10278912,
-          "size_bytes": 16384
-        },
-        "mamba.experts.0.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 10295296,
-          "size_bytes": 16384
-        },
-        "mamba.experts.0.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 10311680,
-          "size_bytes": 1024
-        },
-        "mamba.experts.0.in_proj": {
+        "mamba.gateway.fc1": {
           "shape": [
             256,
-            128
+            554
           ],
           "scale": 1.0,
           "dtype": "float16",
-          "offset": 10312704,
+          "offset": 10369024,
+          "size_bytes": 283648
+        },
+        "mamba.gateway.fc2": {
+          "shape": [
+            128,
+            256
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10652672,
           "size_bytes": 65536
-        },
-        "mamba.experts.0.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 10378240,
-          "size_bytes": 32768
-        },
-        "mamba.experts.1.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 10411008,
-          "size_bytes": 16384
-        },
-        "mamba.experts.1.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 10427392,
-          "size_bytes": 16384
-        },
-        "mamba.experts.1.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 10443776,
-          "size_bytes": 1024
-        },
-        "mamba.experts.1.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 10444800,
-          "size_bytes": 65536
-        },
-        "mamba.experts.1.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 10510336,
-          "size_bytes": 32768
-        },
-        "mamba.experts.2.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 10543104,
-          "size_bytes": 16384
-        },
-        "mamba.experts.2.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 10559488,
-          "size_bytes": 16384
-        },
-        "mamba.experts.2.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 10575872,
-          "size_bytes": 1024
-        },
-        "mamba.experts.2.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 10576896,
-          "size_bytes": 65536
-        },
-        "mamba.experts.2.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 10642432,
-          "size_bytes": 32768
-        },
-        "mamba.experts.3.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 10675200,
-          "size_bytes": 16384
-        },
-        "mamba.experts.3.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 10691584,
-          "size_bytes": 16384
-        },
-        "mamba.experts.3.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 10707968,
-          "size_bytes": 1024
-        },
-        "mamba.experts.3.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 10708992,
-          "size_bytes": 65536
-        },
-        "mamba.experts.3.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 10774528,
-          "size_bytes": 32768
-        },
-        "mamba.experts.4.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 10807296,
-          "size_bytes": 16384
-        },
-        "mamba.experts.4.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 10823680,
-          "size_bytes": 16384
-        },
-        "mamba.experts.4.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 10840064,
-          "size_bytes": 1024
-        },
-        "mamba.experts.4.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 10841088,
-          "size_bytes": 65536
-        },
-        "mamba.experts.4.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 10906624,
-          "size_bytes": 32768
-        },
-        "mamba.experts.5.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 10939392,
-          "size_bytes": 16384
-        },
-        "mamba.experts.5.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 10955776,
-          "size_bytes": 16384
-        },
-        "mamba.experts.5.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 10972160,
-          "size_bytes": 1024
-        },
-        "mamba.experts.5.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 10973184,
-          "size_bytes": 65536
-        },
-        "mamba.experts.5.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 11038720,
-          "size_bytes": 32768
-        },
-        "mamba.experts.6.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 11071488,
-          "size_bytes": 16384
-        },
-        "mamba.experts.6.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 11087872,
-          "size_bytes": 16384
-        },
-        "mamba.experts.6.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 11104256,
-          "size_bytes": 1024
-        },
-        "mamba.experts.6.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 11105280,
-          "size_bytes": 65536
-        },
-        "mamba.experts.6.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 11170816,
-          "size_bytes": 32768
-        },
-        "mamba.experts.7.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 11203584,
-          "size_bytes": 16384
-        },
-        "mamba.experts.7.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 11219968,
-          "size_bytes": 16384
-        },
-        "mamba.experts.7.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 11236352,
-          "size_bytes": 1024
-        },
-        "mamba.experts.7.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 11237376,
-          "size_bytes": 65536
-        },
-        "mamba.experts.7.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float16",
-          "offset": 11302912,
-          "size_bytes": 32768
         },
         "mamba.latent_proj": {
           "shape": [
@@ -2356,7 +2381,7 @@
           ],
           "scale": 1.0,
           "dtype": "float16",
-          "offset": 11335680,
+          "offset": 10718208,
           "size_bytes": 16384
         },
         "mamba.log_var_head": {
@@ -2366,7 +2391,7 @@
           ],
           "scale": 1.0,
           "dtype": "float16",
-          "offset": 11352064,
+          "offset": 10734592,
           "size_bytes": 16384
         },
         "mamba.mu_head": {
@@ -2376,28 +2401,487 @@
           ],
           "scale": 1.0,
           "dtype": "float16",
-          "offset": 11368448,
+          "offset": 10750976,
           "size_bytes": 16384
         },
-        "mamba.router_linear1": {
+        "mamba.residual_experts.0.B_proj": {
           "shape": [
             64,
             128
           ],
           "scale": 1.0,
           "dtype": "float16",
-          "offset": 11384832,
+          "offset": 10767360,
           "size_bytes": 16384
         },
-        "mamba.router_linear2": {
+        "mamba.residual_experts.0.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10783744,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.0.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10800128,
+          "size_bytes": 1024
+        },
+        "mamba.residual_experts.0.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10801152,
+          "size_bytes": 65536
+        },
+        "mamba.residual_experts.0.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10866688,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.1.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10899456,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.1.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10915840,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.1.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10932224,
+          "size_bytes": 1024
+        },
+        "mamba.residual_experts.1.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10933248,
+          "size_bytes": 65536
+        },
+        "mamba.residual_experts.1.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 10998784,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.2.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11031552,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.2.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11047936,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.2.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11064320,
+          "size_bytes": 1024
+        },
+        "mamba.residual_experts.2.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11065344,
+          "size_bytes": 65536
+        },
+        "mamba.residual_experts.2.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11130880,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.3.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11163648,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.3.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11180032,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.3.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11196416,
+          "size_bytes": 1024
+        },
+        "mamba.residual_experts.3.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11197440,
+          "size_bytes": 65536
+        },
+        "mamba.residual_experts.3.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11262976,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.4.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11295744,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.4.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11312128,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.4.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11328512,
+          "size_bytes": 1024
+        },
+        "mamba.residual_experts.4.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11329536,
+          "size_bytes": 65536
+        },
+        "mamba.residual_experts.4.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11395072,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.5.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11427840,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.5.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11444224,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.5.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11460608,
+          "size_bytes": 1024
+        },
+        "mamba.residual_experts.5.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11461632,
+          "size_bytes": 65536
+        },
+        "mamba.residual_experts.5.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11527168,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.6.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11559936,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.6.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11576320,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.6.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11592704,
+          "size_bytes": 1024
+        },
+        "mamba.residual_experts.6.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11593728,
+          "size_bytes": 65536
+        },
+        "mamba.residual_experts.6.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11659264,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.7.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11692032,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.7.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11708416,
+          "size_bytes": 16384
+        },
+        "mamba.residual_experts.7.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11724800,
+          "size_bytes": 1024
+        },
+        "mamba.residual_experts.7.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11725824,
+          "size_bytes": 65536
+        },
+        "mamba.residual_experts.7.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11791360,
+          "size_bytes": 32768
+        },
+        "mamba.router.linear1": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11824128,
+          "size_bytes": 16384
+        },
+        "mamba.router.linear2": {
           "shape": [
             8,
             64
           ],
           "scale": 1.0,
           "dtype": "float16",
-          "offset": 11401216,
+          "offset": 11840512,
           "size_bytes": 1024
+        },
+        "mamba.shared_base_expert.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11841536,
+          "size_bytes": 16384
+        },
+        "mamba.shared_base_expert.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11857920,
+          "size_bytes": 16384
+        },
+        "mamba.shared_base_expert.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11874304,
+          "size_bytes": 1024
+        },
+        "mamba.shared_base_expert.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11875328,
+          "size_bytes": 65536
+        },
+        "mamba.shared_base_expert.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float16",
+          "offset": 11940864,
+          "size_bytes": 32768
         }
       }
     },
@@ -2405,7 +2889,7 @@
       "slice_index": 4,
       "filename": "slice_4_master_fp32.bin",
       "description": "Tier 4: Uncompressed FP32 Master Masterpiece",
-      "chunk_size_bytes": 22804480,
+      "chunk_size_bytes": 23947264,
       "layers": {
         "encoder.bi_mamba.conv_bwd": {
           "shape": [
@@ -2526,6 +3010,56 @@
           "offset": 17128448,
           "size_bytes": 3145728
         },
+        "mamba.attention_fusion.k_up": {
+          "shape": [
+            128,
+            32
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 20274176,
+          "size_bytes": 16384
+        },
+        "mamba.attention_fusion.kv_down": {
+          "shape": [
+            32,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 20290560,
+          "size_bytes": 16384
+        },
+        "mamba.attention_fusion.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 20306944,
+          "size_bytes": 65536
+        },
+        "mamba.attention_fusion.q_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 20372480,
+          "size_bytes": 65536
+        },
+        "mamba.attention_fusion.v_up": {
+          "shape": [
+            128,
+            32
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 20438016,
+          "size_bytes": 16384
+        },
         "mamba.cond_proj": {
           "shape": [
             128,
@@ -2533,416 +3067,28 @@
           ],
           "scale": 1.0,
           "dtype": "float32",
-          "offset": 20274176,
+          "offset": 20454400,
           "size_bytes": 283648
         },
-        "mamba.experts.0.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 20557824,
-          "size_bytes": 32768
-        },
-        "mamba.experts.0.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 20590592,
-          "size_bytes": 32768
-        },
-        "mamba.experts.0.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 20623360,
-          "size_bytes": 2048
-        },
-        "mamba.experts.0.in_proj": {
+        "mamba.gateway.fc1": {
           "shape": [
             256,
-            128
+            554
           ],
           "scale": 1.0,
           "dtype": "float32",
-          "offset": 20625408,
+          "offset": 20738048,
+          "size_bytes": 567296
+        },
+        "mamba.gateway.fc2": {
+          "shape": [
+            128,
+            256
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21305344,
           "size_bytes": 131072
-        },
-        "mamba.experts.0.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 20756480,
-          "size_bytes": 65536
-        },
-        "mamba.experts.1.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 20822016,
-          "size_bytes": 32768
-        },
-        "mamba.experts.1.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 20854784,
-          "size_bytes": 32768
-        },
-        "mamba.experts.1.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 20887552,
-          "size_bytes": 2048
-        },
-        "mamba.experts.1.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 20889600,
-          "size_bytes": 131072
-        },
-        "mamba.experts.1.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 21020672,
-          "size_bytes": 65536
-        },
-        "mamba.experts.2.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 21086208,
-          "size_bytes": 32768
-        },
-        "mamba.experts.2.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 21118976,
-          "size_bytes": 32768
-        },
-        "mamba.experts.2.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 21151744,
-          "size_bytes": 2048
-        },
-        "mamba.experts.2.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 21153792,
-          "size_bytes": 131072
-        },
-        "mamba.experts.2.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 21284864,
-          "size_bytes": 65536
-        },
-        "mamba.experts.3.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 21350400,
-          "size_bytes": 32768
-        },
-        "mamba.experts.3.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 21383168,
-          "size_bytes": 32768
-        },
-        "mamba.experts.3.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 21415936,
-          "size_bytes": 2048
-        },
-        "mamba.experts.3.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 21417984,
-          "size_bytes": 131072
-        },
-        "mamba.experts.3.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 21549056,
-          "size_bytes": 65536
-        },
-        "mamba.experts.4.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 21614592,
-          "size_bytes": 32768
-        },
-        "mamba.experts.4.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 21647360,
-          "size_bytes": 32768
-        },
-        "mamba.experts.4.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 21680128,
-          "size_bytes": 2048
-        },
-        "mamba.experts.4.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 21682176,
-          "size_bytes": 131072
-        },
-        "mamba.experts.4.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 21813248,
-          "size_bytes": 65536
-        },
-        "mamba.experts.5.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 21878784,
-          "size_bytes": 32768
-        },
-        "mamba.experts.5.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 21911552,
-          "size_bytes": 32768
-        },
-        "mamba.experts.5.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 21944320,
-          "size_bytes": 2048
-        },
-        "mamba.experts.5.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 21946368,
-          "size_bytes": 131072
-        },
-        "mamba.experts.5.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 22077440,
-          "size_bytes": 65536
-        },
-        "mamba.experts.6.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 22142976,
-          "size_bytes": 32768
-        },
-        "mamba.experts.6.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 22175744,
-          "size_bytes": 32768
-        },
-        "mamba.experts.6.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 22208512,
-          "size_bytes": 2048
-        },
-        "mamba.experts.6.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 22210560,
-          "size_bytes": 131072
-        },
-        "mamba.experts.6.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 22341632,
-          "size_bytes": 65536
-        },
-        "mamba.experts.7.B_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 22407168,
-          "size_bytes": 32768
-        },
-        "mamba.experts.7.C_proj": {
-          "shape": [
-            64,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 22439936,
-          "size_bytes": 32768
-        },
-        "mamba.experts.7.conv1d": {
-          "shape": [
-            128,
-            1,
-            4
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 22472704,
-          "size_bytes": 2048
-        },
-        "mamba.experts.7.in_proj": {
-          "shape": [
-            256,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 22474752,
-          "size_bytes": 131072
-        },
-        "mamba.experts.7.out_proj": {
-          "shape": [
-            128,
-            128
-          ],
-          "scale": 1.0,
-          "dtype": "float32",
-          "offset": 22605824,
-          "size_bytes": 65536
         },
         "mamba.latent_proj": {
           "shape": [
@@ -2951,7 +3097,7 @@
           ],
           "scale": 1.0,
           "dtype": "float32",
-          "offset": 22671360,
+          "offset": 21436416,
           "size_bytes": 32768
         },
         "mamba.log_var_head": {
@@ -2961,7 +3107,7 @@
           ],
           "scale": 1.0,
           "dtype": "float32",
-          "offset": 22704128,
+          "offset": 21469184,
           "size_bytes": 32768
         },
         "mamba.mu_head": {
@@ -2971,28 +3117,487 @@
           ],
           "scale": 1.0,
           "dtype": "float32",
-          "offset": 22736896,
+          "offset": 21501952,
           "size_bytes": 32768
         },
-        "mamba.router_linear1": {
+        "mamba.residual_experts.0.B_proj": {
           "shape": [
             64,
             128
           ],
           "scale": 1.0,
           "dtype": "float32",
-          "offset": 22769664,
+          "offset": 21534720,
           "size_bytes": 32768
         },
-        "mamba.router_linear2": {
+        "mamba.residual_experts.0.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21567488,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.0.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21600256,
+          "size_bytes": 2048
+        },
+        "mamba.residual_experts.0.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21602304,
+          "size_bytes": 131072
+        },
+        "mamba.residual_experts.0.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21733376,
+          "size_bytes": 65536
+        },
+        "mamba.residual_experts.1.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21798912,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.1.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21831680,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.1.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21864448,
+          "size_bytes": 2048
+        },
+        "mamba.residual_experts.1.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21866496,
+          "size_bytes": 131072
+        },
+        "mamba.residual_experts.1.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 21997568,
+          "size_bytes": 65536
+        },
+        "mamba.residual_experts.2.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22063104,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.2.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22095872,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.2.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22128640,
+          "size_bytes": 2048
+        },
+        "mamba.residual_experts.2.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22130688,
+          "size_bytes": 131072
+        },
+        "mamba.residual_experts.2.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22261760,
+          "size_bytes": 65536
+        },
+        "mamba.residual_experts.3.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22327296,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.3.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22360064,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.3.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22392832,
+          "size_bytes": 2048
+        },
+        "mamba.residual_experts.3.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22394880,
+          "size_bytes": 131072
+        },
+        "mamba.residual_experts.3.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22525952,
+          "size_bytes": 65536
+        },
+        "mamba.residual_experts.4.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22591488,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.4.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22624256,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.4.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22657024,
+          "size_bytes": 2048
+        },
+        "mamba.residual_experts.4.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22659072,
+          "size_bytes": 131072
+        },
+        "mamba.residual_experts.4.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22790144,
+          "size_bytes": 65536
+        },
+        "mamba.residual_experts.5.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22855680,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.5.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22888448,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.5.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22921216,
+          "size_bytes": 2048
+        },
+        "mamba.residual_experts.5.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 22923264,
+          "size_bytes": 131072
+        },
+        "mamba.residual_experts.5.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 23054336,
+          "size_bytes": 65536
+        },
+        "mamba.residual_experts.6.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 23119872,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.6.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 23152640,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.6.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 23185408,
+          "size_bytes": 2048
+        },
+        "mamba.residual_experts.6.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 23187456,
+          "size_bytes": 131072
+        },
+        "mamba.residual_experts.6.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 23318528,
+          "size_bytes": 65536
+        },
+        "mamba.residual_experts.7.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 23384064,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.7.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 23416832,
+          "size_bytes": 32768
+        },
+        "mamba.residual_experts.7.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 23449600,
+          "size_bytes": 2048
+        },
+        "mamba.residual_experts.7.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 23451648,
+          "size_bytes": 131072
+        },
+        "mamba.residual_experts.7.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 23582720,
+          "size_bytes": 65536
+        },
+        "mamba.router.linear1": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 23648256,
+          "size_bytes": 32768
+        },
+        "mamba.router.linear2": {
           "shape": [
             8,
             64
           ],
           "scale": 1.0,
           "dtype": "float32",
-          "offset": 22802432,
+          "offset": 23681024,
           "size_bytes": 2048
+        },
+        "mamba.shared_base_expert.B_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 23683072,
+          "size_bytes": 32768
+        },
+        "mamba.shared_base_expert.C_proj": {
+          "shape": [
+            64,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 23715840,
+          "size_bytes": 32768
+        },
+        "mamba.shared_base_expert.conv1d": {
+          "shape": [
+            128,
+            1,
+            4
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 23748608,
+          "size_bytes": 2048
+        },
+        "mamba.shared_base_expert.in_proj": {
+          "shape": [
+            256,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 23750656,
+          "size_bytes": 131072
+        },
+        "mamba.shared_base_expert.out_proj": {
+          "shape": [
+            128,
+            128
+          ],
+          "scale": 1.0,
+          "dtype": "float32",
+          "offset": 23881728,
+          "size_bytes": 65536
         }
       }
     }
@@ -3003,9 +3608,9 @@
       "slices_included": [
         0
       ],
-      "cumulative_size_bytes": 5701120,
-      "crc32": "65996303",
-      "sha256": "0443cbb892eab7adaf838ab200b105ef3030ce366855672352f4b43f47d0661c"
+      "cumulative_size_bytes": 5986816,
+      "crc32": "3a42834d",
+      "sha256": "d83dfde1a4f895001df2221b899fb6b239d6ec75aeeae950d5ef1830d8c8681a"
     },
     {
       "tier_level": 1,
@@ -3013,9 +3618,9 @@
         0,
         1
       ],
-      "cumulative_size_bytes": 11402240,
-      "crc32": "ba382735",
-      "sha256": "96f578af35226d3472ada1ab35d99cdac731ddcc1bed9cc1418f1669814fa6db"
+      "cumulative_size_bytes": 11973632,
+      "crc32": "126796ca",
+      "sha256": "e2c53419d698931331c39d6d0c39945e7fabb51215fba81949ee92c93a67b7e7"
     },
     {
       "tier_level": 2,
@@ -3024,9 +3629,9 @@
         1,
         2
       ],
-      "cumulative_size_bytes": 17103360,
-      "crc32": "50dfb99b",
-      "sha256": "a8f74a2ac20c1aa75d69531374ad5a8140ecd4e41b90d9b10d8766d24824adaa"
+      "cumulative_size_bytes": 17960448,
+      "crc32": "7fad7196",
+      "sha256": "aa0cc962853b19cafdd85f90261acb1c7f3e48faba158e0df7513b7a32c4c887"
     },
     {
       "tier_level": 3,
@@ -3036,9 +3641,9 @@
         2,
         3
       ],
-      "cumulative_size_bytes": 28505600,
-      "crc32": "6c4fa020",
-      "sha256": "41be286abae417b175feeb42221bf3675d42b77ff8f198eb9847056a70ff2e8f"
+      "cumulative_size_bytes": 29934080,
+      "crc32": "ef38bc52",
+      "sha256": "c3652a74d0addea5c59f8cd770f593e028728dfe5139898624560429cb0d01a8"
     },
     {
       "tier_level": 4,
@@ -3049,9 +3654,9 @@
         3,
         4
       ],
-      "cumulative_size_bytes": 51310080,
-      "crc32": "26396a83",
-      "sha256": "0d069411f60b120f1291628ba872bb37942bb4a5ffc52da04c60fe5f017a9e4e"
+      "cumulative_size_bytes": 53881344,
+      "crc32": "f16c7f19",
+      "sha256": "b45f8284dd3e77f55b28d3de4b293f342bd5aaf6fe1383ca5cca2584a805a5f9"
     }
   ],
   "neural_control": {

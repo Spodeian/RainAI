@@ -1,5 +1,17 @@
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::if_same_then_else)]
+//! RainAI Graphical User Interface & Studio View Controllers.
+//!
+//! Provides the cross-platform immediate-mode UI powered by `egui` and `eframe`.
+//! Features real-time 3D spatial radar visualizations, 16-band interactive FFT spectrograms,
+//! acoustic surface material matrix sliders, hardware stress indicators, and preset managers.
+//!
+//! # Architecture & Modules
+//!
+//! - [`components`]: Modular UI panels including rain controls, 3D Ambisonic radar, real-time
+//!   spectrogram, governor telemetry monitors, and audio export dialogues.
+//! - [`storage_manager`]: Synchronous/asynchronous persistence bridge saving and loading
+//!   user configurations from browser `localStorage` or native filesystem directories.
 
 pub mod components;
 pub mod storage_manager;
@@ -84,6 +96,7 @@ pub struct TemplateApp {
     pub dismissed_quota_warning: bool,
     pub dismissed_combined_warning: bool,
     pub last_diag_poll_time: f64,
+    pub last_wake_lock_state: bool,
 }
 
 impl Default for TemplateApp {
@@ -113,6 +126,7 @@ impl Default for TemplateApp {
             dismissed_quota_warning: false,
             dismissed_combined_warning: false,
             last_diag_poll_time: 0.0,
+            last_wake_lock_state: false,
         }
     }
 }
@@ -121,14 +135,28 @@ impl TemplateApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         info!("Initializing RainAI Studio...");
 
+        let mut loaded_from_storage = true;
         #[allow(unused_mut)]
         let mut state = load_state_multi_tier(cc.storage).unwrap_or_else(|| {
             warn!("No saved state found in storage, initializing fresh defaults.");
+            loaded_from_storage = false;
             AppState::default()
         });
 
         #[cfg(target_arch = "wasm32")]
         {
+            if !loaded_from_storage {
+                if let Some(win) = web_sys::window() {
+                    let inner_w = win.inner_width().ok().and_then(|v| v.as_f64()).unwrap_or(1024.0);
+                    if inner_w < 650.0 {
+                        info!("Detected mobile viewport ({:.0}px), defaulting fresh session to EcoBatterySaver profile", inner_w);
+                        state.rain.optimization_profile = shared::GovernorOptimizationProfile::EcoBatterySaver;
+                        state.rain.thinking_steps = 1;
+                        state.rain.use_consistency_jump = true;
+                    }
+                }
+            }
+
             if let Some(win) = web_sys::window() {
                 if let Ok(hash) = win.location().hash() {
                     let hash = hash.trim_start_matches('#');
@@ -328,6 +356,11 @@ impl TemplateApp {
                     let _ = engine.resume();
                 }
             }
+
+            if self.state.rain.is_playing != self.last_wake_lock_state {
+                self.last_wake_lock_state = self.state.rain.is_playing;
+                crate::storage_manager::set_screen_wake_lock(self.last_wake_lock_state);
+            }
         }
     }
 }
@@ -392,7 +425,7 @@ impl eframe::App for TemplateApp {
                     ui.heading("🌧 RainAI Neural Spatial Soundscape Studio");
                     ui.label("Continuous, non-repetitive procedural rain synthesis conditioned on 554 physical parameters.");
                     ui.add_space(8.0);
-                    self.rain_view.render(ui, &mut self.state.rain);
+                    self.rain_view.render(ui, &mut self.state.rain, self.audio_state.as_ref());
                 });
             });
         });
