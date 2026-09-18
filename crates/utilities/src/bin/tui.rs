@@ -368,6 +368,8 @@ impl App {
         steering.log_tx = Some(log_tx.clone());
         steering.progress_tx = Some(progress_tx.clone());
         steering.surface_weights = Some(Arc::new(Mutex::new(HashMap::new())));
+        steering.dynamic_lr = Some(Arc::new(Mutex::new(None)));
+        steering.dynamic_config = Some(Arc::new(Mutex::new(None)));
 
         // AutoPilot Hardware Probing and Optimal Hyperparameter Calibration
         let hw_profile = HardwareProfile::probe();
@@ -396,7 +398,9 @@ impl App {
                             if parts.len() >= 2 {
                                 let util: f64 = parts[0].parse().unwrap_or(0.0);
                                 let used_mb: u64 = parts[1].parse().unwrap_or(0);
-                                let _ = gpu_tx.send((util, used_mb));
+                                if gpu_tx.send((util, used_mb)).is_err() {
+                                    break;
+                                }
                             }
                         }
                     }
@@ -682,6 +686,15 @@ impl App {
                 }
                 if steering.stop_signal.load(Ordering::SeqCst) {
                     break;
+                }
+
+                if let Some(ref dyn_cfg) = steering.dynamic_config {
+                    if let Ok(mut g) = dyn_cfg.lock() {
+                        if let Some(new_cfg) = g.take() {
+                            config = new_cfg;
+                            let _ = log_tx.send("[+] In-Process Training Engine adopted updated hyperparameters.".to_string());
+                        }
+                    }
                 }
 
                 match run_candle_training_pipeline_with_steering(&config, &steering) {
@@ -1069,6 +1082,30 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                             }
                             KeyCode::Enter => {
                                 app.show_tuning_modal = false;
+                                let new_lr = app.tuning_state.learning_rate;
+                                if let Some(ref lr_mtx) = app.training_steering.dynamic_lr {
+                                    if let Ok(mut g) = lr_mtx.lock() {
+                                        *g = Some(new_lr);
+                                    }
+                                }
+                                if let Some(ref cfg_mtx) = app.training_steering.dynamic_config {
+                                    if let Ok(mut g) = cfg_mtx.lock() {
+                                        let mut c = CandleTrainConfig::default();
+                                        c.learning_rate = app.tuning_state.learning_rate;
+                                        c.batch_size = app.tuning_state.batch_size;
+                                        c.accumulation_steps = app.tuning_state.accumulation_steps;
+                                        c.max_thinking_steps = app.tuning_state.thinking_steps;
+                                        c.tau_moe = app.tuning_state.tau_moe as f64;
+                                        c.lambda_soup_deficit = app.tuning_state.lambda_soup;
+                                        c.stft_weight = app.tuning_state.stft_weight;
+                                        c.cfg_dropout = app.tuning_state.cfg_dropout as f32;
+                                        c.vae_epochs = 5;
+                                        c.mamba_epochs = 10;
+                                        c.max_batches = 190;
+                                        c.continuous_refinement = true;
+                                        *g = Some(c);
+                                    }
+                                }
                                 let _ = app.log_tx.send(format!(
                                     "[+] Applied Tuning: LR={:.6}, Batch={}, Steps={}, τ_moe={:.2}, Soup λ={:.4}",
                                     app.tuning_state.learning_rate,
@@ -1357,10 +1394,20 @@ fn ui(f: &mut ratatui::Frame, app: &App) {
                 Style::default().fg(Color::Black).bg(COLOR_ALERT).add_modifier(Modifier::BOLD),
             )
         } else {
+            let batch_str = if let Some(p) = &app.current_progress {
+                if p.max_batches > 0 {
+                    format!(" | Ep {}/{} [B {}/{}]", p.epoch, p.total_epochs, p.batch_idx, p.max_batches)
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
             (
                 format!(
-                    " [AUTONOMOUS] In-Process Training Active | Stage: {} | Speed: {:.1} chk/s | Quota: {:.1}/15.0 GB ({:.1}%) | Press [Space] to Pause ",
+                    " [AUTONOMOUS] In-Process Training Active | Stage: {}{}| Speed: {:.1} chk/s | Quota: {:.1}/15.0 GB ({:.1}%) | Press [Space] to Pause ",
                     app.flight_stage,
+                    batch_str,
                     app.throughput,
                     app.data_worker_telemetry.disk_usage_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
                     app.data_worker_telemetry.disk_usage_pct
@@ -1428,19 +1475,27 @@ fn render_tab_flight_deck(f: &mut ratatui::Frame, app: &App, area: Rect) {
         .constraints([Constraint::Percentage(55), Constraint::Percentage(45)].as_ref())
         .split(rows[1]);
 
-    // Pane 1: Flight Mission Stages (Top-Left)
+    // Pane 1: Flight Mission Stages & Live Batch Telemetry (Top-Left)
     let p1_chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(5), Constraint::Length(3), Constraint::Min(3)].as_ref())
+        .constraints(
+            [
+                Constraint::Length(3), // Flight Mission Stages
+                Constraint::Length(3), // Live Training Batch & Epoch Progress Gauge
+                Constraint::Length(3), // Real-Time Loss Metrics
+                Constraint::Min(3),    // Real-Time Convergence Sparkline
+            ]
+            .as_ref(),
+        )
         .split(top_cols[0]);
 
     let stages = [
-        ("1. Hardware", FlightStage::HardwareProbe),
-        ("2. Dataset", FlightStage::DatasetValidation),
-        ("3. VAE", FlightStage::VaePretraining),
-        ("4. Mamba+Soup", FlightStage::MambaMoEAndSoup),
-        ("5. QAT", FlightStage::ProgressiveQat),
-        ("6. Export", FlightStage::ExportAndValidation),
+        ("1.HW", FlightStage::HardwareProbe),
+        ("2.Data", FlightStage::DatasetValidation),
+        ("3.VAE", FlightStage::VaePretraining),
+        ("4.Mamba", FlightStage::MambaMoEAndSoup),
+        ("5.QAT", FlightStage::ProgressiveQat),
+        ("6.Export", FlightStage::ExportAndValidation),
     ];
 
     let stage_spans: Vec<Span> = stages
@@ -1462,7 +1517,7 @@ fn render_tab_flight_deck(f: &mut ratatui::Frame, app: &App, area: Rect) {
             let prefix = if is_active { "▶ " } else if is_past { "✔ " } else { "○ " };
             let mut items = vec![Span::styled(format!(" {}{} ", prefix, name), style)];
             if idx + 1 < stages.len() {
-                items.push(Span::raw(" ── "));
+                items.push(Span::styled("─", Style::default().fg(COLOR_ACCENT_DIM)));
             }
             items
         })
@@ -1473,40 +1528,94 @@ fn render_tab_flight_deck(f: &mut ratatui::Frame, app: &App, area: Rect) {
         .alignment(Alignment::Center);
     f.render_widget(flight_board, p1_chunks[0]);
 
-    // Loss summary cards
-    let latest_loss = app.loss_history.last().copied().unwrap_or(42) as f64 / 1000.0;
-    let latest_vae = app.vae_loss_history.last().copied().unwrap_or(28) as f64 / 1000.0;
-    let latest_soup = app.soup_deficit_history.last().copied().unwrap_or(7) as f64 / 1000.0;
-    let latest_stft = app.stft_loss_history.last().copied().unwrap_or(19) as f64 / 1000.0;
+    // Live Training Batch & Epoch Progress Gauge
+    let (progress_ratio, progress_label) = if let Some(p) = &app.current_progress {
+        let ratio = if p.max_batches > 0 {
+            (p.batch_idx as f64 / p.max_batches as f64).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let phase_name = match p.phase {
+            TrainingPhase::Vae => "Spatial VAE",
+            TrainingPhase::Mamba => "Mamba-2 MoE + Soup",
+            TrainingPhase::Export => "Model Staging",
+            TrainingPhase::All => "Autonomous Refinement",
+        };
+        (
+            ratio,
+            format!(
+                "Epoch {}/{} [Batch {}/{}] ({:.1}%) · {} · LR: {:.6}",
+                p.epoch, p.total_epochs, p.batch_idx, p.max_batches, ratio * 100.0, phase_name, p.current_lr
+            ),
+        )
+    } else {
+        (0.0, "Awaiting training telemetry stream...".to_string())
+    };
+
+    let batch_gauge = Gauge::default()
+        .block(Block::default().borders(Borders::ALL).title(" Live In-Process Training Progress ").border_style(Style::default().fg(COLOR_ACCENT_DIM)))
+        .gauge_style(Style::default().fg(COLOR_SUCCESS).bg(Color::Black))
+        .ratio(progress_ratio)
+        .label(progress_label);
+    f.render_widget(batch_gauge, p1_chunks[1]);
+
+    // Real-Time Loss summary cards
+    let (loss_str, vae_str, soup_str, stft_str) = if let Some(p) = &app.current_progress {
+        (
+            if p.loss > 0.0 { format!("{:.4}", p.loss) } else { "Pending".to_string() },
+            if p.vae_loss > 0.0 { format!("{:.4}", p.vae_loss) } else { "Pending".to_string() },
+            if p.soup_deficit > 0.0 { format!("{:.4}", p.soup_deficit) } else { "0.0000".to_string() },
+            if p.stft_loss > 0.0 { format!("{:.4}", p.stft_loss) } else { "Pending".to_string() },
+        )
+    } else if let Some(&last_loss) = app.loss_history.last() {
+        (
+            format!("{:.4}", last_loss as f64 / 1000.0),
+            format!("{:.4}", app.vae_loss_history.last().copied().unwrap_or(0) as f64 / 1000.0),
+            format!("{:.4}", app.soup_deficit_history.last().copied().unwrap_or(0) as f64 / 1000.0),
+            format!("{:.4}", app.stft_loss_history.last().copied().unwrap_or(0) as f64 / 1000.0),
+        )
+    } else {
+        ("Pending".to_string(), "Pending".to_string(), "Pending".to_string(), "Pending".to_string())
+    };
 
     let p1_metrics = Paragraph::new(vec![
         Line::from(vec![
             Span::styled("Mamba-2 MoE Loss: ", Style::default().fg(COLOR_TEXT_MUTED)),
-            Span::styled(format!("{:.4}  ", latest_loss), Style::default().fg(COLOR_TEXT_BRIGHT).add_modifier(Modifier::BOLD)),
-            Span::styled("VAE Reconstruction: ", Style::default().fg(COLOR_TEXT_MUTED)),
-            Span::styled(format!("{:.4}", latest_vae), Style::default().fg(COLOR_ACCENT).add_modifier(Modifier::BOLD)),
+            Span::styled(format!("{:<10} ", loss_str), Style::default().fg(COLOR_TEXT_BRIGHT).add_modifier(Modifier::BOLD)),
+            Span::styled("VAE Recon Loss: ", Style::default().fg(COLOR_TEXT_MUTED)),
+            Span::styled(format!("{:<10}", vae_str), Style::default().fg(COLOR_ACCENT).add_modifier(Modifier::BOLD)),
         ]),
         Line::from(vec![
             Span::styled("Dense Soup Deficit: ", Style::default().fg(COLOR_TEXT_MUTED)),
-            Span::styled(format!("{:.4}  ", latest_soup), Style::default().fg(COLOR_SUCCESS).add_modifier(Modifier::BOLD)),
-            Span::styled("Psychoacoustic STFT: ", Style::default().fg(COLOR_TEXT_MUTED)),
-            Span::styled(format!("{:.4}", latest_stft), Style::default().fg(COLOR_ALERT).add_modifier(Modifier::BOLD)),
+            Span::styled(format!("{:<10} ", soup_str), Style::default().fg(COLOR_SUCCESS).add_modifier(Modifier::BOLD)),
+            Span::styled("STFT Transient: ", Style::default().fg(COLOR_TEXT_MUTED)),
+            Span::styled(format!("{:<10}", stft_str), Style::default().fg(COLOR_ALERT).add_modifier(Modifier::BOLD)),
         ]),
     ]).block(Block::default().borders(Borders::NONE));
-    f.render_widget(p1_metrics, p1_chunks[1]);
+    f.render_widget(p1_metrics, p1_chunks[2]);
 
-    let sparkline_data: Vec<u64> = if app.loss_history.is_empty() {
-        vec![45, 43, 40, 38, 37, 35, 34, 32, 30, 29, 28, 26, 25]
+    let spark_title = if app.loss_history.is_empty() {
+        " Real-Time Convergence Sparkline (Collecting telemetry...) "
     } else {
-        app.loss_history.clone()
+        " Real-Time Mamba-2 Convergence Sparkline "
     };
     let sparkline = Sparkline::default()
-        .block(Block::default().title(" Real-Time Mamba-2 Convergence Sparkline ").borders(Borders::TOP).border_style(Style::default().fg(COLOR_ACCENT_DIM)))
-        .data(&sparkline_data)
+        .block(Block::default().title(spark_title).borders(Borders::TOP).border_style(Style::default().fg(COLOR_ACCENT_DIM)))
+        .data(&app.loss_history)
         .style(Style::default().fg(COLOR_ACCENT));
-    f.render_widget(sparkline, p1_chunks[2]);
+    f.render_widget(sparkline, p1_chunks[3]);
 
     // Pane 2: Dynamic Resource Governor (Top-Right)
+    let eta_str = if app.training_steering.pause_signal.load(Ordering::Relaxed) {
+        "PAUSED".to_string()
+    } else if app.eta_seconds > 0 {
+        format!("{}m {}s", app.eta_seconds / 60, app.eta_seconds % 60)
+    } else if app.throughput > 0.0 {
+        "Calculating...".to_string()
+    } else {
+        "Standby".to_string()
+    };
+
     let p2_lines = vec![
         Line::from(vec![
             Span::styled("Terminal State  : ", Style::default().fg(COLOR_TEXT_MUTED)),
@@ -1527,7 +1636,7 @@ fn render_tab_flight_deck(f: &mut ratatui::Frame, app: &App, area: Rect) {
         Line::from(vec![
             Span::styled("Pacing & Speed  : ", Style::default().fg(COLOR_TEXT_MUTED)),
             Span::styled(format!("{:.1} chunks/sec", app.throughput), Style::default().fg(COLOR_SUCCESS)),
-            Span::styled(format!(" | Estimated ETA: {}m {}s", app.eta_seconds / 60, app.eta_seconds % 60), Style::default().fg(COLOR_TEXT_MUTED)),
+            Span::styled(format!(" | Estimated ETA: {}", eta_str), Style::default().fg(COLOR_TEXT_MUTED)),
         ]),
         Line::from(vec![
             Span::styled("Compute Platform: ", Style::default().fg(COLOR_TEXT_MUTED)),
@@ -1655,12 +1764,21 @@ fn render_tab_dataset_health(f: &mut ratatui::Frame, app: &App, area: Rect) {
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
         .split(area);
 
-    // Left: 65-Source Catalog Explorer
+    // Left: 65-Source Catalog Explorer with Dynamic Scrolling Window
     let total_srcs = app.sources.len();
+    let visible_capacity = chunks[0].height.saturating_sub(2) as usize;
+    let scroll_offset = if total_srcs > visible_capacity && app.selected_source_idx >= visible_capacity {
+        (app.selected_source_idx + 1).saturating_sub(visible_capacity).min(total_srcs.saturating_sub(visible_capacity))
+    } else {
+        0
+    };
+
     let src_items: Vec<ListItem> = app
         .sources
         .iter()
         .enumerate()
+        .skip(scroll_offset)
+        .take(visible_capacity)
         .map(|(i, src)| {
             let is_sel = i == app.selected_source_idx;
             let marker = if is_sel { "▶ " } else { "  " };
@@ -1680,9 +1798,10 @@ fn render_tab_dataset_health(f: &mut ratatui::Frame, app: &App, area: Rect) {
         })
         .collect();
 
+    let cur_pos = if total_srcs > 0 { app.selected_source_idx + 1 } else { 0 };
     let title = format!(
-        " 65-Source Catalog Explorer ({} Sources) [▲/▼/j/k: Browse | Enter: Details] ",
-        total_srcs
+        " 65-Source Catalog Explorer [{}/{} Sources | ▲/▼/j/k: Browse | Enter: Details] ",
+        cur_pos, total_srcs
     );
     let sources_list = List::new(src_items)
         .block(Block::default().title(title).borders(Borders::ALL).border_style(Style::default().fg(COLOR_ACCENT)));
@@ -2002,11 +2121,12 @@ fn render_tab_diagnostics_and_logs(f: &mut ratatui::Frame, app: &App, area: Rect
 
     let total = filtered_logs.len();
     let visible_h = log_chunks[1].height.saturating_sub(2) as usize;
-    let max_scroll = total.saturating_sub(visible_h);
-    let capped_offset = app.log_offset_from_bottom.min(max_scroll);
-    let scroll_pos = max_scroll.saturating_sub(capped_offset);
+    let max_offset = total.saturating_sub(visible_h);
+    let capped_offset = app.log_offset_from_bottom.min(max_offset);
+    let end = total.saturating_sub(capped_offset);
+    let start = end.saturating_sub(visible_h);
 
-    let log_lines: Vec<Line> = filtered_logs
+    let log_lines: Vec<Line> = filtered_logs[start..end]
         .iter()
         .map(|l| {
             let style = if l.contains("[ERR]") || l.contains("FAIL") {
@@ -2032,9 +2152,7 @@ fn render_tab_diagnostics_and_logs(f: &mut ratatui::Frame, app: &App, area: Rect
     );
 
     let logs_para = Paragraph::new(log_lines)
-        .block(Block::default().title(title).borders(Borders::ALL).border_style(Style::default().fg(COLOR_ACCENT_DIM)))
-        .wrap(Wrap { trim: false })
-        .scroll((scroll_pos as u16, 0));
+        .block(Block::default().title(title).borders(Borders::ALL).border_style(Style::default().fg(COLOR_ACCENT_DIM)));
     f.render_widget(logs_para, log_chunks[1]);
 }
 
@@ -2042,51 +2160,59 @@ fn render_tab_diagnostics_and_logs(f: &mut ratatui::Frame, app: &App, area: Rect
 fn render_telemetry_footer(f: &mut ratatui::Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(65), Constraint::Percentage(35)].as_ref())
+        .constraints([Constraint::Percentage(52), Constraint::Percentage(48)].as_ref())
         .split(area);
 
     let shortcuts_spans = match app.active_tab {
         0 => vec![
             Span::styled("[Space] ", Style::default().fg(COLOR_ACCENT).add_modifier(Modifier::BOLD)),
-            Span::styled("Pause/Resume  ", Style::default().fg(COLOR_TEXT_BRIGHT)),
+            Span::styled("Pause/Resume ", Style::default().fg(COLOR_TEXT_BRIGHT)),
             Span::styled("[s] ", Style::default().fg(COLOR_ALERT).add_modifier(Modifier::BOLD)),
-            Span::styled("Auto-Balance  ", Style::default().fg(COLOR_TEXT_BRIGHT)),
+            Span::styled("Balance ", Style::default().fg(COLOR_TEXT_BRIGHT)),
             Span::styled("[d] ", Style::default().fg(COLOR_ACCENT).add_modifier(Modifier::BOLD)),
-            Span::styled("Deploy  ", Style::default().fg(COLOR_TEXT_BRIGHT)),
-            Span::styled("[c] ", Style::default().fg(COLOR_ACCENT).add_modifier(Modifier::BOLD)),
-            Span::styled("Audio Stream  ", Style::default().fg(COLOR_TEXT_BRIGHT)),
+            Span::styled("Deploy ", Style::default().fg(COLOR_TEXT_BRIGHT)),
             Span::styled("[g] ", Style::default().fg(COLOR_ALERT).add_modifier(Modifier::BOLD)),
-            Span::styled("Tuning  ", Style::default().fg(COLOR_TEXT_BRIGHT)),
+            Span::styled("Tuning ", Style::default().fg(COLOR_TEXT_BRIGHT)),
+            Span::styled("[q] ", Style::default().fg(COLOR_ERROR).add_modifier(Modifier::BOLD)),
+            Span::styled("Quit ", Style::default().fg(COLOR_TEXT_BRIGHT)),
             Span::styled("[?] ", Style::default().fg(COLOR_ALERT).add_modifier(Modifier::BOLD)),
             Span::styled("Help", Style::default().fg(COLOR_TEXT_MUTED)),
         ],
         1 => vec![
             Span::styled("[j/k] ", Style::default().fg(COLOR_ACCENT).add_modifier(Modifier::BOLD)),
-            Span::styled("Browse  ", Style::default().fg(COLOR_TEXT_BRIGHT)),
+            Span::styled("Browse ", Style::default().fg(COLOR_TEXT_BRIGHT)),
             Span::styled("[Enter] ", Style::default().fg(COLOR_ACCENT).add_modifier(Modifier::BOLD)),
-            Span::styled("Inspect  ", Style::default().fg(COLOR_TEXT_BRIGHT)),
+            Span::styled("Inspect ", Style::default().fg(COLOR_TEXT_BRIGHT)),
             Span::styled("[s] ", Style::default().fg(COLOR_ALERT).add_modifier(Modifier::BOLD)),
-            Span::styled("Balance  ", Style::default().fg(COLOR_TEXT_BRIGHT)),
+            Span::styled("Balance ", Style::default().fg(COLOR_TEXT_BRIGHT)),
             Span::styled("[i] ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-            Span::styled("Ingest  ", Style::default().fg(COLOR_TEXT_BRIGHT)),
-            Span::styled("[u] ", Style::default().fg(COLOR_SUCCESS).add_modifier(Modifier::BOLD)),
-            Span::styled("Upmix  ", Style::default().fg(COLOR_TEXT_BRIGHT)),
+            Span::styled("Ingest ", Style::default().fg(COLOR_TEXT_BRIGHT)),
+            Span::styled("[q] ", Style::default().fg(COLOR_ERROR).add_modifier(Modifier::BOLD)),
+            Span::styled("Quit ", Style::default().fg(COLOR_TEXT_BRIGHT)),
+            Span::styled("[?] ", Style::default().fg(COLOR_ALERT).add_modifier(Modifier::BOLD)),
+            Span::styled("Help", Style::default().fg(COLOR_TEXT_MUTED)),
         ],
         2 => vec![
             Span::styled("[d] ", Style::default().fg(COLOR_ACCENT).add_modifier(Modifier::BOLD)),
-            Span::styled("Deploy to WebGPU  ", Style::default().fg(COLOR_TEXT_BRIGHT)),
+            Span::styled("Deploy WebGPU ", Style::default().fg(COLOR_TEXT_BRIGHT)),
             Span::styled("[g] ", Style::default().fg(COLOR_ALERT).add_modifier(Modifier::BOLD)),
-            Span::styled("Tuning Drawer  ", Style::default().fg(COLOR_TEXT_BRIGHT)),
+            Span::styled("Tuning Drawer ", Style::default().fg(COLOR_TEXT_BRIGHT)),
+            Span::styled("[q] ", Style::default().fg(COLOR_ERROR).add_modifier(Modifier::BOLD)),
+            Span::styled("Quit ", Style::default().fg(COLOR_TEXT_BRIGHT)),
             Span::styled("[?] ", Style::default().fg(COLOR_ALERT).add_modifier(Modifier::BOLD)),
             Span::styled("Help", Style::default().fg(COLOR_TEXT_MUTED)),
         ],
         _ => vec![
             Span::styled("[/] ", Style::default().fg(COLOR_ACCENT).add_modifier(Modifier::BOLD)),
-            Span::styled("Search  ", Style::default().fg(COLOR_TEXT_BRIGHT)),
+            Span::styled("Search ", Style::default().fg(COLOR_TEXT_BRIGHT)),
             Span::styled("[G] ", Style::default().fg(COLOR_ACCENT).add_modifier(Modifier::BOLD)),
-            Span::styled("Bottom  ", Style::default().fg(COLOR_TEXT_BRIGHT)),
+            Span::styled("Bottom ", Style::default().fg(COLOR_TEXT_BRIGHT)),
             Span::styled("[Ctrl+C] ", Style::default().fg(COLOR_ALERT).add_modifier(Modifier::BOLD)),
-            Span::styled("Export Logs", Style::default().fg(COLOR_TEXT_BRIGHT)),
+            Span::styled("Export ", Style::default().fg(COLOR_TEXT_BRIGHT)),
+            Span::styled("[q] ", Style::default().fg(COLOR_ERROR).add_modifier(Modifier::BOLD)),
+            Span::styled("Quit ", Style::default().fg(COLOR_TEXT_BRIGHT)),
+            Span::styled("[?] ", Style::default().fg(COLOR_ALERT).add_modifier(Modifier::BOLD)),
+            Span::styled("Help", Style::default().fg(COLOR_TEXT_MUTED)),
         ],
     };
 
@@ -2120,16 +2246,17 @@ fn render_telemetry_footer(f: &mut ratatui::Frame, app: &App, area: Rect) {
     let safe_gpu = if app.gpu_usage.is_nan() { 0.0 } else { app.gpu_usage };
     let vram_used_gb = app.gpu_mem_used_mb as f64 / 1024.0;
     let vram_total_gb = (app.gpu_mem_total_mb as f64 / 1024.0).max(1.0);
+    let gpu_title = if app.gpu_name.contains("NVIDIA") { " GPU (CUDA) " } else { " GPU " };
     let gpu_gauge = Gauge::default()
         .block(
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(COLOR_ACCENT_DIM))
-                .title(format!(" {} ", app.gpu_name)),
+                .title(gpu_title),
         )
         .gauge_style(Style::default().fg(Color::Cyan).bg(COLOR_BG))
         .ratio((safe_gpu / 100.0).clamp(0.0, 1.0))
-        .label(format!("{:.1}% ({:.1}/{:.1} GB)", safe_gpu, vram_used_gb, vram_total_gb));
+        .label(format!("{:.0}% ({:.1}/{}G)", safe_gpu, vram_used_gb, vram_total_gb.round() as u64));
     f.render_widget(gpu_gauge, gauge_splits[1]);
 
     let safe_mem = if app.mem_usage.is_nan() { 0.0 } else { app.mem_usage };
@@ -2284,7 +2411,7 @@ fn render_audit_modal(f: &mut ratatui::Frame, app: &App, area: Rect) {
 
 /// Universal Quick-Help Modal Overlay.
 fn render_help_modal(f: &mut ratatui::Frame, area: Rect) {
-    let modal_area = centered_rect(72, 82, area);
+    let modal_area = centered_rect(75, 88, area);
     f.render_widget(Clear, modal_area);
 
     let help_text = vec![

@@ -143,6 +143,7 @@ pub struct CandleTrainingSteeringHandle {
     pub log_tx: Option<Sender<String>>,
     pub surface_weights: Option<Arc<Mutex<HashMap<String, f32>>>>,
     pub dynamic_lr: Option<Arc<Mutex<Option<f64>>>>,
+    pub dynamic_config: Option<Arc<Mutex<Option<CandleTrainConfig>>>>,
 }
 
 impl Default for CandleTrainingSteeringHandle {
@@ -161,6 +162,7 @@ impl CandleTrainingSteeringHandle {
             log_tx: None,
             surface_weights: None,
             dynamic_lr: None,
+            dynamic_config: None,
         }
     }
 }

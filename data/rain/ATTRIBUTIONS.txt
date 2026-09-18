@@ -1434,3 +1434,5 @@ Platform: RainAI-Acoustic-Archive | File: mock_sample_999.wav | Category: tin_ro
 Platform: MockPlatform | File: mock_thunder_storm_001.mp3 | Category: heavy_rain_thunder (Surface: pavement) | Tier: PublicDomain | License: CC0 | URL: https://example.com/thunder_sample.mp3
 Platform: RainAI-Acoustic-Archive | File: mock_sample_999.wav | Category: tin_roof (Surface: tin_roof) | Tier: PublicDomain | License: CC0 | URL: local://rainai/mock_sample_999.wav
 Platform: MockPlatform | File: mock_thunder_storm_001.mp3 | Category: heavy_rain_thunder (Surface: pavement) | Tier: PublicDomain | License: CC0 | URL: https://example.com/thunder_sample.mp3
+Platform: RainAI-Acoustic-Archive | File: mock_sample_999.wav | Category: tin_roof (Surface: tin_roof) | Tier: PublicDomain | License: CC0 | URL: local://rainai/mock_sample_999.wav
+Platform: MockPlatform | File: mock_thunder_storm_001.mp3 | Category: heavy_rain_thunder (Surface: pavement) | Tier: PublicDomain | License: CC0 | URL: https://example.com/thunder_sample.mp3
