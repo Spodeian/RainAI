@@ -49,7 +49,7 @@ use sysinfo::System;
 
 use utilities::{
     audio_preview::{AudioPreviewManager, PreferenceChoice},
-    autopilot::{probe_host_nvidia_gpu, CANONICAL_SURFACES, SurfaceEntropyAuditor, SurfaceQuota},
+    autopilot::{probe_host_nvidia_gpu, CANONICAL_SURFACES, HardwareProfile, SurfaceEntropyAuditor, SurfaceQuota},
     candle_train::{
         run_candle_training_pipeline_with_steering, AtomicCheckpointManager, CandleTrainConfig,
         CandleTrainingSteeringHandle, TrainingPhase, TrainingProgressUpdate, TrainingSessionState,
@@ -328,6 +328,7 @@ pub struct App {
     log_rx: Receiver<String>,
     pub log_tx: Sender<String>,
     last_tick: Instant,
+    pub last_auto_balance: Instant,
 }
 
 impl Default for App {
@@ -368,11 +369,18 @@ impl App {
         steering.progress_tx = Some(progress_tx.clone());
         steering.surface_weights = Some(Arc::new(Mutex::new(HashMap::new())));
 
-        // Probe host GPU and spawn background telemetry worker
+        // AutoPilot Hardware Probing and Optimal Hyperparameter Calibration
+        let hw_profile = HardwareProfile::probe();
         let (gpu_name, gpu_mem_total_mb) = match probe_host_nvidia_gpu() {
             Some((name, mem_mb)) => (format!("NVIDIA {}", name), mem_mb),
             None => ("CUDA/DirectX GPU".to_string(), 8192),
         };
+
+        let mut tuning_state = GranularTuningState::default();
+        tuning_state.batch_size = hw_profile.recommended_batch_size;
+        tuning_state.accumulation_steps = hw_profile.recommended_accumulation_steps;
+        tuning_state.thinking_steps = hw_profile.recommended_thinking_steps;
+        tuning_state.tau_moe = 0.75;
 
         let (gpu_tx, gpu_rx) = mpsc::channel();
         thread::spawn(move || {
@@ -400,13 +408,22 @@ impl App {
         let mut app = App {
             active_tab: 0,
             engine: TrainingEngine::NativeCandle,
-            flight_stage: FlightStage::Idle,
+            flight_stage: FlightStage::HardwareProbe,
             logs: vec![
                 "RainAI Terminal Studio Initialized (Autonomous Pure-Rust Engine).".to_string(),
+                format!(
+                    "[⚡] AutoPilot: Discovered {} ({} CPU cores, {:.1} GB RAM) -> Batch: {}, Accum: {}, Deliberation: {} steps",
+                    hw_profile.gpu_device,
+                    hw_profile.cpu_cores,
+                    hw_profile.total_ram_gb,
+                    hw_profile.recommended_batch_size,
+                    hw_profile.recommended_accumulation_steps,
+                    hw_profile.recommended_thinking_steps
+                ),
                 "Zero Subprocesses: All Candle training and DSP pipelines run in-process.".to_string(),
                 "Resource Governor Active: ~80% host compute when focused; throttles to ~50% when unfocused.".to_string(),
                 "15 GB Rolling Quota: Automated rotation maintains Shannon entropy H >= 0.90.".to_string(),
-                "Press [?] for Universal Quick-Help. Press [Space] to Pause/Resume.".to_string(),
+                "Autonomous Self-Driving Studio: Training, balancing, and web model synchronization active.".to_string(),
             ],
             log_offset_from_bottom: 0,
             log_search_query: String::new(),
@@ -437,7 +454,7 @@ impl App {
             dynamic_lambda_soup: 0.05,
             show_tuning_modal: false,
             selected_tuning_idx: 0,
-            tuning_state: GranularTuningState::default(),
+            tuning_state,
             audio_preview: AudioPreviewManager::default(),
             show_audit_modal: false,
             continuous_audio_stream: false,
@@ -461,10 +478,22 @@ impl App {
             log_rx,
             log_tx,
             last_tick: Instant::now(),
+            last_auto_balance: Instant::now(),
         };
 
         app.trigger_sources_load();
         app.trigger_manifest_refresh();
+
+        // Autonomously verify and stage models if already trained
+        app.deploy_models_in_process();
+
+        // Autonomously check if dataset needs bootstrapping
+        let manifest_exists = Path::new("Data/processed/manifest.json").exists()
+            || Path::new("data/processed/manifest.json").exists();
+        if !manifest_exists {
+            let _ = app.log_tx.send("[*] AutoPilot: Fresh environment detected. Scheduling autonomous dataset bootstrap...".to_string());
+            app.auto_balance_deficits();
+        }
 
         // Autonomously initiate in-process training on launch
         app.launch_training();
@@ -641,6 +670,7 @@ impl App {
                 match run_candle_training_pipeline_with_steering(&config, &steering) {
                     Ok(()) => {
                         let _ = log_tx.send("[+] Epoch tranche completed. Advancing to next continuous training cycle...".to_string());
+                        let _ = Self::deploy_models_standalone(&log_tx);
                     }
                     Err(e) => {
                         let _ = log_tx.send(format!("[!] In-Process Training Interrupted: {}", e));
@@ -738,8 +768,8 @@ impl App {
         self.start_in_process_data_pipeline("synth", Some(deficit_surfaces));
     }
 
-    /// Automatically deploys converged models to crates/inference/data and crates/web/dist.
-    pub fn deploy_models_in_process(&mut self) {
+    /// Standalone deployment logic that can be invoked on boot, on training completion, or via UI.
+    pub fn deploy_models_standalone(log_tx: &Sender<String>) -> bool {
         let src_candidates = [
             ("checkpoints/candle/spatial_vae_best.safetensors", "checkpoints/candle/mamba2_moe_best.safetensors"),
             ("crates/inference/data/candle/spatial_vae_best.safetensors", "crates/inference/data/candle/mamba2_moe_best.safetensors"),
@@ -757,8 +787,8 @@ impl App {
         let (src_vae, src_mamba) = match found_pair {
             Some(pair) => pair,
             None => {
-                let _ = self.log_tx.send("[!] No trained safetensors found in checkpoints/candle/. Run training first.".into());
-                return;
+                let _ = log_tx.send("[*] Awaiting converged safetensors from active training tranche...".into());
+                return false;
             }
         };
 
@@ -778,11 +808,18 @@ impl App {
             success = true;
         }
 
-        self.deployed_to_web = success;
-        let _ = self.log_tx.send(format!(
-            "[+] Models verified in '{}' (Single Source of Truth; Trunk WASM links directly).",
-            target_dir.display()
-        ));
+        if success {
+            let _ = log_tx.send(format!(
+                "[🚀] AutoPilot: Deployed & verified models in '{}' (Single Source of Truth; Trunk WASM & WebGPU synchronized).",
+                target_dir.display()
+            ));
+        }
+        success
+    }
+
+    /// Automatically deploys converged models to crates/inference/data and crates/web/dist.
+    pub fn deploy_models_in_process(&mut self) {
+        self.deployed_to_web = Self::deploy_models_standalone(&self.log_tx);
     }
 
     /// Graceful, corruption-proof studio shutdown.
@@ -825,6 +862,18 @@ impl App {
                 self.total_chunks = telemetry.total_chunks;
             }
             self.data_worker_telemetry = telemetry;
+        }
+
+        // Autonomous Dataset Balancing Watchdog:
+        // Automatically balances deficit surfaces in the background to sustain Shannon entropy H >= 0.90
+        if self.last_auto_balance.elapsed() >= Duration::from_secs(45) && self.active_in_process_task.is_none() {
+            let has_deficits = self.surface_quotas.iter().any(|q| q.deficit_count > 0);
+            if (self.entropy_score > 0.0 && self.entropy_score < 0.90 && has_deficits)
+                || (self.total_chunks == 0 && Path::new("sources.json").exists())
+            {
+                self.auto_balance_deficits();
+            }
+            self.last_auto_balance = Instant::now();
         }
 
         // Poll In-Process Training Progress Updates
@@ -896,6 +945,10 @@ impl App {
                     let (ent, quotas) = SurfaceEntropyAuditor::audit(&self.surface_stats);
                     self.entropy_score = ent;
                     self.surface_quotas = quotas;
+
+                    if self.flight_stage == FlightStage::HardwareProbe {
+                        self.flight_stage = FlightStage::DatasetValidation;
+                    }
                 }
                 continue;
             }
@@ -1539,19 +1592,19 @@ fn render_tab_flight_deck(f: &mut ratatui::Frame, app: &App, area: Rect) {
     let p4_lines = vec![
         Line::from(vec![
             Span::styled("[Space] ", Style::default().fg(COLOR_SUCCESS).add_modifier(Modifier::BOLD)),
-            Span::raw("Pause / Resume In-Process Training"),
+            Span::raw("Pause / Resume In-Process Training (Auto-Running)"),
         ]),
         Line::from(vec![
             Span::styled("[s]     ", Style::default().fg(COLOR_ALERT).add_modifier(Modifier::BOLD)),
-            Span::raw("Auto-Balance Surface Deficits (Gunn-Kinzer Synthesis)"),
+            Span::raw("Trigger Manual Balance (Watchdog Active: H >= 0.90)"),
         ]),
         Line::from(vec![
             Span::styled("[d]     ", Style::default().fg(COLOR_ACCENT).add_modifier(Modifier::BOLD)),
-            Span::raw("Deploy Models into WebGPU & Inference Engine"),
+            Span::raw("Force Re-Deploy WebGPU (Auto-Deployed on Boot/Epoch)"),
         ]),
         Line::from(vec![
             Span::styled("[g]     ", Style::default().fg(COLOR_ALERT).add_modifier(Modifier::BOLD)),
-            Span::raw("Open Hyperparameter Tuning Drawer"),
+            Span::raw("Hyperparameter Tuning Drawer (Hardware Calibrated)"),
         ]),
         Line::from(vec![
             Span::styled("[r]     ", Style::default().fg(COLOR_ACCENT).add_modifier(Modifier::BOLD)),
@@ -1564,7 +1617,7 @@ fn render_tab_flight_deck(f: &mut ratatui::Frame, app: &App, area: Rect) {
     ];
 
     let p4_widget = Paragraph::new(p4_lines)
-        .block(Block::default().borders(Borders::ALL).title(" MASTER MISSION ACTIONS ").border_style(Style::default().fg(COLOR_ACCENT)));
+        .block(Block::default().borders(Borders::ALL).title(" AUTONOMOUS MISSION CONTROL (MANUAL OVERRIDES) ").border_style(Style::default().fg(COLOR_ACCENT)));
     f.render_widget(p4_widget, bot_cols[1]);
 }
 
