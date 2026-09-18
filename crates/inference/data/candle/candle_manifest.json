@@ -2,7 +2,7 @@
   "framework": "Candle",
   "version": "0.11",
   "phases_trained": [
-    "Export"
+    "All"
   ],
   "models": {
     "spatial_vae": "spatial_vae.safetensors",
@@ -19,8 +19,8 @@
   "gamma_tabu": 1.0,
   "max_thinking_steps": 3,
   "stft_mode": "Combined",
-  "best_vae_val_loss": null,
-  "best_mamba_val_loss": null,
+  "best_vae_val_loss": 0.17333193123340607,
+  "best_mamba_val_loss": 1.8629262447357178,
   "real_dataset_used": true,
   "flow_matching_enabled": true,
   "expert_diversity_enabled": true,

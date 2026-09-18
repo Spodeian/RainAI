@@ -30,12 +30,15 @@ htmlcov/
 checkpoints/
 ai/checkpoints/
 crates/inference/data/wasm/
+training_session.json
 
 # ------------------------------------------------------------------------------
 # 4. Data Directories, Audio Datasets & Large Binary Media
 # ------------------------------------------------------------------------------
 # Ignore contents of root and workspace data directories, but allow .gitkeep files
 /data/*/*
+!/data/rain/ATTRIBUTIONS.txt
+!/Data/rain/ATTRIBUTIONS.txt
 
 # Global exclusions for audio and binary model artifacts
 *.flac
