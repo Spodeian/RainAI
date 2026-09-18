@@ -2091,6 +2091,24 @@ pub fn run_candle_training_pipeline_with_steering(
         (None, None)
     };
 
+    if let Some(ref p_tx) = steering.progress_tx {
+        let _ = p_tx.send(TrainingProgressUpdate {
+            phase: TrainingPhase::Vae,
+            epoch: 1,
+            total_epochs: config.vae_epochs,
+            batch_idx: 0,
+            max_batches: config.max_batches,
+            loss: 0.0,
+            vae_loss: 0.0,
+            mamba_loss: 0.0,
+            soup_deficit: 0.0,
+            stft_loss: 0.0,
+            current_lr: config.learning_rate,
+            throughput: 0.0,
+            eta_seconds: (config.vae_epochs * config.max_batches) as u64,
+        });
+    }
+
     let get_train_batch = |batch_size: usize, cfg_prob: f32, so3_prob: f32, mixup_prob: f32| -> Result<TrainingBatch> {
         if let Some(ref ds) = train_dataset {
             ds.sample_batch_augmented(batch_size, &device, cfg_prob, so3_prob, mixup_prob)
@@ -2272,7 +2290,7 @@ pub fn run_candle_training_pipeline_with_steering(
                     let remaining_steps = total_expected_steps.saturating_sub(current_step);
                     let eta_seconds = (remaining_steps as f64 * config.batch_size as f64 / throughput.max(1.0)) as u64;
 
-                    if batch_idx % 10 == 0 || batch_idx == 1 || batch_idx == config.max_batches {
+                    if batch_idx % 5 == 0 || batch_idx == 1 || batch_idx == config.max_batches {
                         if let Some(ref p_tx) = steering.progress_tx {
                             let _ = p_tx.send(TrainingProgressUpdate {
                                 phase: TrainingPhase::Vae,
@@ -2633,7 +2651,7 @@ pub fn run_candle_training_pipeline_with_steering(
                     let remaining_steps = total_expected_steps.saturating_sub(current_step);
                     let eta_seconds = (remaining_steps as f64 * config.batch_size as f64 / throughput.max(1.0)) as u64;
 
-                    if batch_idx % 10 == 0 || batch_idx == 1 || batch_idx == config.max_batches {
+                    if batch_idx % 5 == 0 || batch_idx == 1 || batch_idx == config.max_batches {
                         if let Some(ref p_tx) = steering.progress_tx {
                             let _ = p_tx.send(TrainingProgressUpdate {
                                 phase: TrainingPhase::Mamba,
@@ -2741,6 +2759,23 @@ pub fn run_candle_training_pipeline_with_steering(
     // Phase 4: Multi-Backend SafeTensors & Metadata Verification
     // ------------------------------------------------------------------------
     if execute_export {
+        if let Some(ref p_tx) = steering.progress_tx {
+            let _ = p_tx.send(TrainingProgressUpdate {
+                phase: TrainingPhase::Export,
+                epoch: 1,
+                total_epochs: 1,
+                batch_idx: 1,
+                max_batches: 1,
+                loss: session.last_mamba_loss,
+                vae_loss: session.last_vae_loss,
+                mamba_loss: session.last_mamba_loss,
+                soup_deficit: session.last_soup_deficit,
+                stft_loss: session.last_stft_loss,
+                current_lr: config.learning_rate,
+                throughput: 0.0,
+                eta_seconds: 0,
+            });
+        }
         log_msg("\n[Stage 3/3] Exporting and validating SafeTensors deployment packages...");
         let manifest_path = config.output_dir.join("candle_manifest.json");
         let manifest = serde_json::json!({

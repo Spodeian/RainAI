@@ -638,6 +638,23 @@ impl App {
         let steering = self.training_steering.clone();
         let log_tx = self.log_tx.clone();
 
+        // Immediately notify UI that training engine is spinning up
+        let _ = self.progress_tx.send(TrainingProgressUpdate {
+            phase: TrainingPhase::Vae,
+            epoch: 1,
+            total_epochs: 5,
+            batch_idx: 0,
+            max_batches: 190,
+            loss: 0.0,
+            vae_loss: 0.0,
+            mamba_loss: 0.0,
+            soup_deficit: 0.0,
+            stft_loss: 0.0,
+            current_lr: self.tuning_state.learning_rate,
+            throughput: 0.0,
+            eta_seconds: 180,
+        });
+
         // Build config from tuning parameters
         let mut config = CandleTrainConfig::default();
         config.learning_rate = self.tuning_state.learning_rate;
@@ -648,9 +665,9 @@ impl App {
         config.lambda_soup_deficit = self.tuning_state.lambda_soup;
         config.stft_weight = self.tuning_state.stft_weight;
         config.cfg_dropout = self.tuning_state.cfg_dropout as f32;
-        config.vae_epochs = 2;
-        config.mamba_epochs = 3;
-        config.max_batches = 50; // Continuous iterative pacing
+        config.vae_epochs = 5;
+        config.mamba_epochs = 10;
+        config.max_batches = 190; // Full epoch pass over 1,526 chunks (1526 / 8 = 190 batches)
         config.continuous_refinement = true;
 
         thread::spawn(move || {
@@ -669,12 +686,12 @@ impl App {
 
                 match run_candle_training_pipeline_with_steering(&config, &steering) {
                     Ok(()) => {
-                        let _ = log_tx.send("[+] Epoch tranche completed. Advancing to next continuous training cycle...".to_string());
+                        let _ = log_tx.send("[+] Continuous training cycle completed. Automatically initiating next tranche...".to_string());
                         let _ = Self::deploy_models_standalone(&log_tx);
                     }
                     Err(e) => {
-                        let _ = log_tx.send(format!("[!] In-Process Training Interrupted: {}", e));
-                        break;
+                        let _ = log_tx.send(format!("[!] In-Process Training Notice: {}. Retrying in 3s...", e));
+                        std::thread::sleep(Duration::from_secs(3));
                     }
                 }
 
@@ -1008,8 +1025,8 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                 Event::FocusLost => {
                     app.terminal_focused = false;
                     app.target_resource_pct = 50;
-                    app.training_steering.throttle_micros.store(15000, Ordering::Relaxed);
-                    let _ = app.log_tx.send("[💤] Terminal out of focus: Resource Governor throttled to ~50% host compute (throttle=15000µs)".to_string());
+                    app.training_steering.throttle_micros.store(2000, Ordering::Relaxed);
+                    let _ = app.log_tx.send("[💤] Terminal out of focus: Resource Governor operating in background compute mode (throttle=2000µs)".to_string());
                 }
 
                 Event::Key(key) => {
@@ -1331,16 +1348,26 @@ fn ui(f: &mut ratatui::Frame, app: &App) {
             Style::default().fg(Color::Black).bg(COLOR_ALERT).add_modifier(Modifier::BOLD),
         )
     } else if is_running {
-        (
-            format!(
-                " [AUTONOMOUS] In-Process Training Active | Stage: {} | Speed: {:.1} chk/s | Quota: {:.1}/15.0 GB ({:.1}%) | Press [Space] to Pause ",
-                app.flight_stage,
-                app.throughput,
-                app.data_worker_telemetry.disk_usage_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
-                app.data_worker_telemetry.disk_usage_pct
-            ),
-            Style::default().fg(Color::Black).bg(COLOR_SUCCESS).add_modifier(Modifier::BOLD),
-        )
+        if app.throughput == 0.0 {
+            (
+                format!(
+                    " [INITIALIZING] In-Process Training Starting · Ingesting Acoustic Records & Staging Models | Stage: {} | Press [Space] to Pause ",
+                    app.flight_stage
+                ),
+                Style::default().fg(Color::Black).bg(COLOR_ALERT).add_modifier(Modifier::BOLD),
+            )
+        } else {
+            (
+                format!(
+                    " [AUTONOMOUS] In-Process Training Active | Stage: {} | Speed: {:.1} chk/s | Quota: {:.1}/15.0 GB ({:.1}%) | Press [Space] to Pause ",
+                    app.flight_stage,
+                    app.throughput,
+                    app.data_worker_telemetry.disk_usage_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
+                    app.data_worker_telemetry.disk_usage_pct
+                ),
+                Style::default().fg(Color::Black).bg(COLOR_SUCCESS).add_modifier(Modifier::BOLD),
+            )
+        }
     } else if let Some(task) = &app.active_in_process_task {
         (
             format!(" [PROCESSING] In-Process Data Pipeline: {} | Press [x] to Abort ", task),
