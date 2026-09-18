@@ -302,43 +302,57 @@ fn test_candle_manifest_dataset() {
 }
 
 #[test]
-fn test_threshold_coverage_routing() {
+fn test_smooth_softmax_routing() {
     let device = Device::Cpu;
-    // Batch of 2, 8 experts
-    // Row 0: high confidence on expert 0 (0.85) -> should select only 1 expert with tau_cov = 0.75
-    // Row 1: uniform (0.125 each) -> should select 6 experts to reach 0.75
-    let probs = Tensor::from_slice(
+    // Logits: row 0 concentrated (expert 0 dominates), row 1 uniform
+    let logits = Tensor::from_slice(
         &[
-            0.85f32, 0.05, 0.02, 0.02, 0.02, 0.02, 0.01, 0.01,
-            0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125,
+            10.0f32, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+            0.0f32, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
         ],
         (2, 8),
         &device,
-    ).expect("Failed creating test probs");
+    ).expect("Failed creating test logits");
 
-    let (sparse_weights, active_mask, mean_active) =
-        CandleMamba2MoE::route_threshold_coverage(&probs, 0.75)
-            .expect("Threshold routing failed");
+    let (smooth_weights, weights_as_mask, mean_eff) =
+        CandleMamba2MoE::route_smooth_softmax(&logits, 0.75)
+            .expect("Smooth routing failed");
 
-    assert_eq!(sparse_weights.dims(), &[2, 8]);
-    assert_eq!(active_mask.dims(), &[2, 8]);
+    assert_eq!(smooth_weights.dims(), &[2, 8]);
+    assert_eq!(weights_as_mask.dims(), &[2, 8]);
 
-    let mask_vec = active_mask.to_vec2::<f32>().unwrap();
-    let row0_active: f32 = mask_vec[0].iter().sum();
-    let row1_active: f32 = mask_vec[1].iter().sum();
+    let w_vec = smooth_weights.to_vec2::<f32>().unwrap();
 
-    assert_eq!(row0_active, 1.0, "High certainty row must activate exactly 1 expert");
-    assert_eq!(row1_active, 6.0, "Uniform row must activate 6 experts to cover 75% mass (6 * 0.125 = 0.75)");
+    // ALL weights must be non-zero — no discrete zeroing
+    for (row, row_weights) in w_vec.iter().enumerate() {
+        for (e, &w) in row_weights.iter().enumerate() {
+            assert!(w > 0.0, "Row {row} expert {e} weight must be > 0 (got {w}) — smooth routing must never zero-out experts");
+        }
+    }
 
-    // Verify weights normalize to 1.0
-    let weights_vec = sparse_weights.to_vec2::<f32>().unwrap();
-    let row0_sum: f32 = weights_vec[0].iter().sum();
-    let row1_sum: f32 = weights_vec[1].iter().sum();
-    assert!((row0_sum - 1.0).abs() < 1e-5);
-    assert!((row1_sum - 1.0).abs() < 1e-5);
+    // Weights must sum to ~1.0 per row
+    let row0_sum: f32 = w_vec[0].iter().sum();
+    let row1_sum: f32 = w_vec[1].iter().sum();
+    assert!((row0_sum - 1.0).abs() < 1e-5, "Row 0 must sum to 1.0, got {row0_sum}");
+    assert!((row1_sum - 1.0).abs() < 1e-5, "Row 1 must sum to 1.0, got {row1_sum}");
 
-    let mean_count: f32 = mean_active.to_scalar().unwrap();
-    assert_eq!(mean_count, 3.5);
+    // Concentrated logits (row 0) must have higher weight on expert 0 than uniform (row 1)
+    assert!(
+        w_vec[0][0] > w_vec[1][0],
+        "Concentrated row must weight expert 0 higher than uniform row: {:.4} vs {:.4}",
+        w_vec[0][0], w_vec[1][0]
+    );
+
+    // Uniform logits (row 1) should produce near-uniform weights (1/8 = 0.125)
+    for &w in &w_vec[1] {
+        assert!((w - 0.125).abs() < 0.01, "Uniform logits must produce ~uniform weights, got {w}");
+    }
+
+    // Mean effective count: exp(H). For uniform dist over 8, H = ln(8) ≈ 2.079, exp(H) ≈ 8.
+    // For concentrated (row 0), exp(H) ≈ 1 (nearly all mass on one expert).
+    // Mean should be between 1 and 8.
+    let eff: f32 = mean_eff.to_scalar().unwrap();
+    assert!(eff > 1.0 && eff <= 8.0, "Mean effective count must be in (1, 8], got {eff}");
 }
 
 #[test]
@@ -712,12 +726,12 @@ fn test_temporal_tabu_and_expert_diversity_loss() {
 
     // Without tabu penalty (gamma = 0.0)
     let (_, _, probs_no_tabu, _, _, _) = mamba
-        .forward_threshold_tabu(&z_prev, &cond, &h_prev, 0.75, Some(&prior_tensor), 0.0)
+        .forward_smooth_tabu(&z_prev, &cond, &h_prev, 0.75, Some(&prior_tensor), 0.0)
         .unwrap();
 
     // With strong tabu penalty (gamma = 5.0)
     let (_, _, probs_with_tabu, _, _, _) = mamba
-        .forward_threshold_tabu(&z_prev, &cond, &h_prev, 0.75, Some(&prior_tensor), 5.0)
+        .forward_smooth_tabu(&z_prev, &cond, &h_prev, 0.75, Some(&prior_tensor), 5.0)
         .unwrap();
 
     let p0_no = probs_no_tabu.get(0).unwrap().get(0).unwrap().to_scalar::<f32>().unwrap();

@@ -497,7 +497,7 @@ impl CandleMamba2MoE {
         })
     }
 
-    /// Forward pass with Top-K routing, DeepSeek shared base expert, and load-balancing probabilities.
+    /// Forward pass with smooth softmax routing, DeepSeek shared base expert, and load-balancing probabilities.
     pub fn forward(
         &self,
         z_prev: &Tensor,
@@ -668,63 +668,42 @@ impl CandleMamba2MoE {
         Ok(CandleMambaExpert::from_parts(in_linear, rec_linear, out_linear))
     }
 
-    /// Dynamically selects the minimal subset of experts whose cumulative probability
-    /// meets or exceeds the threshold `tau_cov`. Non-selected experts are zeroed out,
-    /// and active expert weights are normalized to sum to 1.
-    /// Returns `(sparse_weights, active_mask, mean_active_count)`.
-    pub fn route_threshold_coverage(
-        probs: &Tensor,
-        tau_cov: f64,
+    /// Smooth temperature-scaled softmax routing. All experts receive non-zero, differentiable
+    /// weights — no discrete selection or zeroing. The parameter `tau_moe` is the softmax
+    /// temperature: lower values sharpen focus, higher values spread load uniformly.
+    ///
+    /// Returns `(smooth_weights, weights_as_mask, mean_effective_count)` where:
+    /// - `smooth_weights`: full [B, N] probability distribution summing to 1.0 per row.
+    /// - `weights_as_mask`: same tensor (continuous, no binary gate).
+    /// - `mean_effective_count`: per-batch mean exp(H) — entropy-based effective expert count.
+    pub fn route_smooth_softmax(
+        logits: &Tensor,
+        tau_moe: f64,
     ) -> Result<(Tensor, Tensor, Tensor)> {
-        let (b_sz, n_exp) = probs.dims2()?;
-        let probs_vec = probs.to_vec2::<f32>()?;
-        let mut sparse_vec = Vec::with_capacity(b_sz * n_exp);
-        let mut mask_vec = Vec::with_capacity(b_sz * n_exp);
-        let mut total_active = 0.0f32;
+        let tau = tau_moe.max(0.05);
+        // Temperature-scaled softmax: p_e = exp((l_e - max) / tau) / Z
+        let scaled = (logits * (1.0 / tau))?;
+        let smooth_weights = candle_nn::ops::softmax(&scaled, 1)?;
 
-        for row in probs_vec {
-            let mut indexed: Vec<(usize, f32)> = row.iter().copied().enumerate().collect();
-            indexed.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        // Entropy-based effective expert count: exp(H) = exp(-sum p*log(p))
+        let log_w = (smooth_weights.log()? * -1.0)?;
+        let entropy = (&smooth_weights * &log_w)?.sum(1)?;       // [B]
+        let eff_count = entropy.exp()?;                           // exp(H), in [1, N]
+        let mean_eff = eff_count.mean_all()?;
 
-            let mut cum_sum = 0.0f32;
-            let mut active_indices = Vec::new();
-            for (idx, p) in indexed {
-                cum_sum += p;
-                active_indices.push((idx, p));
-                if (cum_sum as f64) >= tau_cov {
-                    break;
-                }
-            }
-
-            total_active += active_indices.len() as f32;
-            let mut row_sparse = vec![0.0f32; n_exp];
-            let mut row_mask = vec![0.0f32; n_exp];
-            let active_sum: f32 = active_indices.iter().map(|(_, p)| *p).sum();
-            let norm_factor = if active_sum > 1e-6 { 1.0 / active_sum } else { 1.0 };
-
-            for (idx, p) in active_indices {
-                row_sparse[idx] = p * norm_factor;
-                row_mask[idx] = 1.0;
-            }
-
-            sparse_vec.extend(row_sparse);
-            mask_vec.extend(row_mask);
-        }
-
-        let sparse_weights = Tensor::from_vec(sparse_vec, (b_sz, n_exp), probs.device())?;
-        let active_mask = Tensor::from_vec(mask_vec, (b_sz, n_exp), probs.device())?;
-        let mean_active = Tensor::from_slice(&[total_active / b_sz.max(1) as f32], (), probs.device())?;
-        Ok((sparse_weights, active_mask, mean_active))
+        Ok((smooth_weights.clone(), smooth_weights, mean_eff))
     }
 
-    /// Forward pass with dynamic threshold-coverage routing and temporal tabu logit dampening:
-    /// modified_logits = router_logits - gamma_tabu * tabu_history
-    pub fn forward_threshold_tabu(
+    /// Forward pass with continuous smooth softmax routing and temporal tabu logit dampening.
+    /// All experts participate with differentiable weights — no discrete gating or zeroing.
+    /// `tau_moe`: softmax temperature (lower → sharper; 0.75 default). Tabu dampening
+    /// subtracts `gamma_tabu * tabu_history` from logits before softmax.
+    pub fn forward_smooth_tabu(
         &self,
         z_prev: &Tensor,
         conditioning: &Tensor,
         h_prev: &Tensor,
-        tau_cov: f64,
+        tau_moe: f64,
         tabu_history: Option<&Tensor>,
         gamma_tabu: f64,
     ) -> Result<(Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)> {
@@ -738,9 +717,12 @@ impl CandleMamba2MoE {
                 router_logits = (router_logits - penalty)?;
             }
         }
-        let router_probs = candle_nn::ops::softmax(&router_logits, 1)?;
 
-        let (sparse_weights, active_mask, mean_active) = Self::route_threshold_coverage(&router_probs, tau_cov)?;
+        // Smooth softmax routing — all 8 experts receive continuous non-zero weights
+        let (smooth_weights, active_mask, mean_eff) =
+            Self::route_smooth_softmax(&router_logits, tau_moe)?;
+        // Keep router_probs (for loss computations) as the same smooth distribution
+        let router_probs = smooth_weights.clone();
 
         // DeepSeek shared base expert
         let (base_out, base_h_next) = self.shared_base.forward(&h_in, h_prev)?;
@@ -758,7 +740,7 @@ impl CandleMamba2MoE {
         let mut blended_state = (&next_states[0] * 0.0)?;
 
         for (e, (exp_out, exp_state)) in expert_outputs.iter().zip(next_states.iter()).enumerate() {
-            let weight_e = sparse_weights.narrow(1, e, 1)?;
+            let weight_e = smooth_weights.narrow(1, e, 1)?;
             let weighted_out = exp_out.broadcast_mul(&weight_e)?;
             let weighted_state = exp_state.broadcast_mul(&weight_e)?;
             blended_out = (&blended_out + &weighted_out)?;
@@ -771,18 +753,18 @@ impl CandleMamba2MoE {
         let fused = self.fusion.forward(&blended_out)?.gelu_erf()?;
         let z_pred = self.traj_head.forward(&fused)?;
 
-        Ok((z_pred, blended_state, router_probs, active_mask, mean_active, router_logits))
+        Ok((z_pred, blended_state, router_probs, active_mask, mean_eff, router_logits))
     }
 
-    /// Forward pass with dynamic threshold-coverage routing (tau_cov).
-    pub fn forward_threshold(
+    /// Forward pass with smooth softmax routing (no tabu dampening).
+    pub fn forward_smooth(
         &self,
         z_prev: &Tensor,
         conditioning: &Tensor,
         h_prev: &Tensor,
-        tau_cov: f64,
+        tau_moe: f64,
     ) -> Result<(Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)> {
-        self.forward_threshold_tabu(z_prev, conditioning, h_prev, tau_cov, None, 0.0)
+        self.forward_smooth_tabu(z_prev, conditioning, h_prev, tau_moe, None, 0.0)
     }
 }
 
@@ -1762,7 +1744,7 @@ pub struct CandleTrainConfig {
     pub beta_kl: f64,
     pub use_real_data: bool,
     pub use_flow_matching: bool,
-    pub tau_cov: f64,
+    pub tau_moe: f64,
     pub max_thinking_steps: usize,
     pub eps_thinking_halt: f32,
     pub max_grad_norm: f64,
@@ -1807,7 +1789,7 @@ impl Default for CandleTrainConfig {
             beta_kl: 0.001,
             use_real_data: true,
             use_flow_matching: true,
-            tau_cov: 0.75,
+            tau_moe: 0.75,
             max_thinking_steps: 3,
             eps_thinking_halt: 0.02,
             max_grad_norm: 1.0,
@@ -2227,8 +2209,8 @@ pub fn run_candle_training_pipeline_with_steering(
             let mut telem_state = Tensor::zeros((config.batch_size, 32, 16), DType::F32, &device)?;
 
             log_msg(&format!(
-                "[*] Threshold-Coverage MoE Routing active (tau_cov: {:.2}, gamma_tabu: {:.2})",
-                config.tau_cov, config.gamma_tabu
+                "[*] Smooth Softmax MoE Routing active (tau_moe: {:.2}, gamma_tabu: {:.2})",
+                config.tau_moe, config.gamma_tabu
             ));
             log_msg(&format!(
                 "[*] Iterative Latent Thinking active (Max Steps: {}, Halting Eps: {:.4}, Jitter Sigma: {:.4})",
@@ -2306,11 +2288,11 @@ pub fn run_candle_training_pipeline_with_steering(
                         config.surface_mixup_prob,
                     )?;
 
-                    let (z_pred, next_h, router_probs, _active_mask, mean_active, router_logits) = mamba_model.forward_threshold_tabu(
+                    let (z_pred, next_h, router_probs, _smooth_mask, mean_active, router_logits) = mamba_model.forward_smooth_tabu(
                         &batch.z_prev,
                         &batch.conditioning,
                         &h_state,
-                        config.tau_cov,
+                        config.tau_moe,
                         None,
                         0.0,
                     )?;
@@ -2329,11 +2311,11 @@ pub fn run_candle_training_pipeline_with_steering(
                     let mut z_delib = z_pred.copy()?;
 
                     for _ in 1..m_batch {
-                        let (step_z, _, step_probs, _, _, _) = mamba_model.forward_threshold_tabu(
+                        let (step_z, _, step_probs, _, _, _) = mamba_model.forward_smooth_tabu(
                             &z_delib,
                             &batch.conditioning,
                             &h_state,
-                            config.tau_cov,
+                            config.tau_moe,
                             Some(&tabu_sum),
                             config.gamma_tabu,
                         )?;
@@ -2502,11 +2484,11 @@ pub fn run_candle_training_pipeline_with_steering(
                 let mut val_h_state = Tensor::zeros((config.batch_size, 128), DType::F32, &device)?;
                 for _ in 0..val_batches {
                     let vbatch = get_val_batch(config.batch_size)?;
-                    let (vz_pred, vnext_h, _, _, _, _) = mamba_model.forward_threshold(
+                    let (vz_pred, vnext_h, _, _, _, _) = mamba_model.forward_smooth(
                         &vbatch.z_prev,
                         &vbatch.conditioning,
                         &val_h_state,
-                        config.tau_cov,
+                        config.tau_moe,
                     )?;
                     val_h_state = vnext_h.copy()?;
                     let (vz_ref, _, _) = thinking_block.forward_thinking(
@@ -2591,7 +2573,7 @@ pub fn run_candle_training_pipeline_with_steering(
             "latent_dim": LATENT_DIM,
             "conditioning_dim": CONDITION_DIM,
             "experts": NUM_EXPERTS,
-            "tau_cov": config.tau_cov,
+            "tau_moe": config.tau_moe,
             "gamma_tabu": config.gamma_tabu,
             "max_thinking_steps": config.max_thinking_steps,
             "stft_mode": format!("{:?}", config.stft_mode),

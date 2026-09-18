@@ -79,7 +79,7 @@ pub struct GranularTuningState {
     pub batch_size: usize,
     pub accumulation_steps: usize,
     pub thinking_steps: usize,
-    pub active_experts: usize,
+    pub tau_moe: f32,
     pub lambda_soup: f64,
     pub stft_weight: f64,
     pub cfg_dropout: f64,
@@ -92,7 +92,7 @@ impl Default for GranularTuningState {
             batch_size: 4,
             accumulation_steps: 2,
             thinking_steps: 3,
-            active_experts: 2,
+            tau_moe: 0.75,
             lambda_soup: 0.05,
             stft_weight: 1.0,
             cfg_dropout: 0.1,
@@ -133,9 +133,9 @@ impl GranularTuningState {
             }
             4 => {
                 if increment {
-                    self.active_experts = (self.active_experts + 1).min(8);
+                    self.tau_moe = (self.tau_moe + 0.05).min(2.0);
                 } else {
-                    self.active_experts = self.active_experts.saturating_sub(1).max(2);
+                    self.tau_moe = (self.tau_moe - 0.05).max(0.05);
                 }
             }
             5 => {
@@ -176,7 +176,7 @@ impl GranularTuningState {
                 ),
             ),
             3 => ("Deliberation Thinking Steps", format!("{}/5 steps", self.thinking_steps)),
-            4 => ("Active MoE Experts", format!("{}/8 experts", self.active_experts)),
+            4 => ("MoE Temperature (τ)", format!("τ = {:.2} (smooth, all 8 experts)", self.tau_moe)),
             5 => ("Dense Soup Weight (λ_soup)", format!("{:.4}", self.lambda_soup)),
             6 => ("STFT Transient Loss Weight", format!("{:.2}", self.stft_weight)),
             7 => ("CFG Conditioning Dropout", format!("{:.2}", self.cfg_dropout)),
@@ -931,11 +931,11 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                             KeyCode::Enter => {
                                 app.show_tuning_modal = false;
                                 let _ = app.log_tx.send(format!(
-                                    "[+] Applied Tuning: LR={:.6}, Batch={}, Steps={}, Experts={}, Soup λ={:.4}",
+                                    "[+] Applied Tuning: LR={:.6}, Batch={}, Steps={}, τ_moe={:.2}, Soup λ={:.4}",
                                     app.tuning_state.learning_rate,
                                     app.tuning_state.batch_size,
                                     app.tuning_state.thinking_steps,
-                                    app.tuning_state.active_experts,
+                                    app.tuning_state.tau_moe,
                                     app.tuning_state.lambda_soup
                                 ));
                             }
@@ -1672,10 +1672,10 @@ fn render_tab_neural_blueprint(f: &mut ratatui::Frame, app: &App, area: Rect) {
         Line::from(""),
         Line::from(vec![
             Span::styled("3. Dual-Branch Mixture-of-Experts (MoE): ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-            Span::raw("K=8 experts, Top-2"),
+            Span::raw("K=8 experts, continuous smooth routing"),
         ]),
-        Line::from("   • Threshold-coverage routing (tau_cov = 0.75)"),
-        Line::from("   • Temporal Tabu anti-repetition memory penalty (gamma = 1.0)"),
+        Line::from("   • Temperature-scaled softmax (τ_moe = 0.75), all experts active with non-zero weights"),
+        Line::from("   • Temporal Tabu anti-repetition logit dampening (gamma = 1.0)"),
         Line::from(""),
         Line::from(vec![
             Span::styled("4. Static Dense Soup & Dynamic Interpolation: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),

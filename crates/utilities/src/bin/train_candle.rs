@@ -101,9 +101,9 @@ fn main() -> Result<()> {
             "--use-flow-matching" => {
                 config.use_flow_matching = true;
             }
-            "--tau-cov" => {
+            "--tau-moe" => {
                 if i + 1 < args.len() {
-                    config.tau_cov = args[i + 1].parse().unwrap_or(config.tau_cov);
+                    config.tau_moe = args[i + 1].parse().unwrap_or(config.tau_moe);
                     i += 1;
                 }
             }
