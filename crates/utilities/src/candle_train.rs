@@ -1608,6 +1608,9 @@ pub fn record_training_attribution_if_needed(meta: &crate::features::AudioMetada
     AsyncAttributionRecorder::get_or_init().record(&meta.filename, &meta.surface_tag);
 }
 
+static CACHED_MANIFEST: std::sync::Mutex<Option<(std::time::SystemTime, Vec<crate::features::AudioMetadata>)>> =
+    std::sync::Mutex::new(None);
+
 /// Real acoustic manifest dataset loader for Candle training.
 pub struct CandleManifestDataset {
     pub entries: Vec<crate::features::AudioMetadata>,
@@ -1615,12 +1618,28 @@ pub struct CandleManifestDataset {
 
 impl CandleManifestDataset {
     pub fn load_from_manifest<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let file = std::fs::File::open(path)?;
+        let p = path.as_ref();
+        let mtime = std::fs::metadata(p).and_then(|m| m.modified()).unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+
+        if let Ok(guard) = CACHED_MANIFEST.lock() {
+            if let Some((cached_time, ref cached_entries)) = *guard {
+                if cached_time == mtime && !cached_entries.is_empty() {
+                    return Ok(Self { entries: cached_entries.clone() });
+                }
+            }
+        }
+
+        let file = std::fs::File::open(p)?;
         let map: HashMap<String, crate::features::AudioMetadata> = serde_json::from_reader(file)?;
         let entries: Vec<crate::features::AudioMetadata> = map.into_values().collect();
         if entries.is_empty() {
             anyhow::bail!("Loaded manifest contains zero audio entries.");
         }
+
+        if let Ok(mut guard) = CACHED_MANIFEST.lock() {
+            *guard = Some((mtime, entries.clone()));
+        }
+
         Ok(Self { entries })
     }
 
@@ -2188,6 +2207,7 @@ pub fn run_candle_training_pipeline_with_steering(
                 let mut epoch_stft = 0.0f32;
                 let mut epoch_doa = 0.0f32;
                 let mut epoch_diff = 0.0f32;
+                let mut vae_accum_grads: HashMap<candle_core::TensorId, Tensor> = HashMap::new();
 
                 for batch_idx in 1..=config.max_batches {
                     // Check pause
@@ -2271,10 +2291,35 @@ pub fn run_candle_training_pipeline_with_steering(
                     epoch_doa += doa_val;
                     epoch_diff += diff_val;
 
-                    let scaled_loss = (total_batch_loss / config.accumulation_steps as f64)?;
-                    let mut grads = scaled_loss.backward()?;
+                    if config.accumulation_steps > 1 {
+                        let scaled_loss = (total_batch_loss / config.accumulation_steps as f64)?;
+                        let batch_grads = scaled_loss.backward()?;
+                        for var in vae_varmap.all_vars() {
+                            let t = var.as_tensor();
+                            if let Some(g) = batch_grads.get(t) {
+                                match vae_accum_grads.get_mut(&t.id()) {
+                                    Some(acc) => *acc = (acc as &Tensor + g)?,
+                                    None => { vae_accum_grads.insert(t.id(), g.clone()); }
+                                }
+                            }
+                        }
 
-                    if batch_idx % config.accumulation_steps == 0 || batch_idx == config.max_batches {
+                        if batch_idx % config.accumulation_steps == 0 || batch_idx == config.max_batches {
+                            let mut final_grads = candle_core::backprop::GradStore::default();
+                            for var in vae_varmap.all_vars() {
+                                let t = var.as_tensor();
+                                if let Some(g) = vae_accum_grads.remove(&t.id()) {
+                                    final_grads.insert(t, g);
+                                }
+                            }
+                            let _norm = clip_grad_norm_varmap(&vae_varmap, &mut final_grads, config.max_grad_norm)?;
+                            vae_opt.step(&final_grads)?;
+                            let current_lr = vae_scheduler.step();
+                            vae_opt.set_learning_rate(current_lr);
+                            vae_ema.update(&vae_varmap)?;
+                        }
+                    } else {
+                        let mut grads = total_batch_loss.backward()?;
                         let _norm = clip_grad_norm_varmap(&vae_varmap, &mut grads, config.max_grad_norm)?;
                         vae_opt.step(&grads)?;
                         let current_lr = vae_scheduler.step();
@@ -2344,6 +2389,9 @@ pub fn run_candle_training_pipeline_with_steering(
                 session.loss_history.push((avg_loss * 1000.0).max(0.0) as u64);
                 session.vae_loss_history.push((avg_recon * 1000.0).max(0.0) as u64);
                 session.stft_loss_history.push((avg_stft * 1000.0).max(0.0) as u64);
+                if session.loss_history.len() > 500 { session.loss_history.drain(..50); }
+                if session.vae_loss_history.len() > 500 { session.vae_loss_history.drain(..50); }
+                if session.stft_loss_history.len() > 500 { session.stft_loss_history.drain(..50); }
                 session.timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
 
                 if avg_val_loss < best_vae_val_loss {
@@ -2408,6 +2456,10 @@ pub fn run_candle_training_pipeline_with_steering(
 
             let mut h_state = Tensor::zeros((config.batch_size, 128), DType::F32, &device)?;
             let mut telem_state = Tensor::zeros((config.batch_size, 32, 16), DType::F32, &device)?;
+            let telem_const = Tensor::full(0.5f32, (config.batch_size, 4), &device)?;
+            let user_w_const = Tensor::full(0.5f32, (config.batch_size, 3), &device)?;
+            let quality_const = Tensor::full(0.9f32, (config.batch_size, 2), &device)?;
+            let slice_const = Tensor::full(1.0f32, (config.batch_size, 1), &device)?;
 
             log_msg(&format!(
                 "[*] Smooth Softmax MoE Routing active (tau_moe: {:.2}, gamma_tabu: {:.2})",
@@ -2438,6 +2490,7 @@ pub fn run_candle_training_pipeline_with_steering(
                 let mut epoch_distill = 0.0f32;
                 let mut epoch_active_exp = 0.0f32;
                 let mut epoch_thinking_steps = 0.0f32;
+                let mut mamba_accum_grads: HashMap<candle_core::TensorId, Tensor> = HashMap::new();
 
                 let max_m_epoch = if config.thinking_curriculum {
                     epoch.min(config.max_thinking_steps)
@@ -2497,7 +2550,7 @@ pub fn run_candle_training_pipeline_with_steering(
                         None,
                         0.0,
                     )?;
-                    h_state = next_h.copy()?;
+                    h_state = next_h.detach();
                     epoch_active_exp += mean_active.to_scalar::<f32>()?;
 
                     let m_batch = if max_m_epoch > 1 {
@@ -2552,12 +2605,8 @@ pub fn run_candle_training_pipeline_with_steering(
                     let aux_loss = compute_moe_load_balancing_loss(&router_probs)?;
                     let router_z_loss = compute_router_z_loss(&router_logits)?;
 
-                    let telem = Tensor::full(0.5f32, (config.batch_size, 4), &device)?;
-                    let user_w = Tensor::full(0.5f32, (config.batch_size, 3), &device)?;
-                    let quality = Tensor::full(0.9f32, (config.batch_size, 2), &device)?;
-                    let slice = Tensor::full(1.0f32, (config.batch_size, 1), &device)?;
-                    let meta_out = meta_controller.forward(&router_probs, &telem, &user_w, &quality, &slice, &telem_state)?;
-                    telem_state = meta_out.next_telem_state.copy()?;
+                    let meta_out = meta_controller.forward(&router_probs, &telem_const, &user_w_const, &quality_const, &slice_const, &telem_state)?;
+                    telem_state = meta_out.next_telem_state.detach();
 
                     let active_exp_val = mean_active.to_scalar::<f32>()?;
                     let hwil_scalar = compute_continuous_hwil_penalty(50.0, 50.0, active_exp_val, 2.0);
@@ -2622,10 +2671,42 @@ pub fn run_candle_training_pipeline_with_steering(
                     epoch_div += div_val;
                     epoch_distill += distill_val;
 
-                    let scaled_loss = (total_loss / config.accumulation_steps as f64)?;
-                    let mut grads = scaled_loss.backward()?;
+                    if config.accumulation_steps > 1 {
+                        let scaled_loss = (total_loss / config.accumulation_steps as f64)?;
+                        let batch_grads = scaled_loss.backward()?;
+                        for var in mamba_varmap.all_vars() {
+                            let t = var.as_tensor();
+                            if let Some(g) = batch_grads.get(t) {
+                                match mamba_accum_grads.get_mut(&t.id()) {
+                                    Some(acc) => *acc = (acc as &Tensor + g)?,
+                                    None => { mamba_accum_grads.insert(t.id(), g.clone()); }
+                                }
+                            }
+                        }
 
-                    if batch_idx % config.accumulation_steps == 0 || batch_idx == config.max_batches {
+                        if batch_idx % config.accumulation_steps == 0 || batch_idx == config.max_batches {
+                            let mut final_grads = candle_core::backprop::GradStore::default();
+                            for var in mamba_varmap.all_vars() {
+                                let t = var.as_tensor();
+                                if let Some(g) = mamba_accum_grads.remove(&t.id()) {
+                                    let shape = t.dims();
+                                    let scaled_g = if shape.len() == 2 && shape[0] == 128 && shape[1] == 16 {
+                                        (g * 0.1)?
+                                    } else {
+                                        g
+                                    };
+                                    final_grads.insert(t, scaled_g);
+                                }
+                            }
+
+                            let _norm = clip_grad_norm_varmap(&mamba_varmap, &mut final_grads, config.max_grad_norm)?;
+                            mamba_opt.step(&final_grads)?;
+                            let current_lr = mamba_scheduler.step();
+                            mamba_opt.set_learning_rate(current_lr);
+                            mamba_ema.update(&mamba_varmap)?;
+                        }
+                    } else {
+                        let mut grads = total_loss.backward()?;
                         let _norm = clip_grad_norm_varmap(&mamba_varmap, &mut grads, config.max_grad_norm)?;
 
                         for var in mamba_varmap.all_vars() {
@@ -2723,6 +2804,7 @@ pub fn run_candle_training_pipeline_with_steering(
                 session.total_epochs = config.mamba_epochs;
                 session.last_mamba_loss = avg_loss;
                 session.loss_history.push((avg_loss * 1000.0).max(0.0) as u64);
+                if session.loss_history.len() > 500 { session.loss_history.drain(..50); }
                 session.timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
 
                 if avg_val_loss < best_mamba_val_loss {

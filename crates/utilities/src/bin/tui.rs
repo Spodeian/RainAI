@@ -907,26 +907,26 @@ impl App {
 
             if progress.loss > 0.0 {
                 self.loss_history.push((progress.loss * 1000.0) as u64);
-                if self.loss_history.len() > 100 {
-                    self.loss_history.remove(0);
+                if self.loss_history.len() > 120 {
+                    self.loss_history.drain(..20);
                 }
             }
             if progress.vae_loss > 0.0 {
                 self.vae_loss_history.push((progress.vae_loss * 1000.0) as u64);
-                if self.vae_loss_history.len() > 100 {
-                    self.vae_loss_history.remove(0);
+                if self.vae_loss_history.len() > 120 {
+                    self.vae_loss_history.drain(..20);
                 }
             }
             if progress.soup_deficit > 0.0 {
                 self.soup_deficit_history.push((progress.soup_deficit * 1000.0) as u64);
-                if self.soup_deficit_history.len() > 100 {
-                    self.soup_deficit_history.remove(0);
+                if self.soup_deficit_history.len() > 120 {
+                    self.soup_deficit_history.drain(..20);
                 }
             }
             if progress.stft_loss > 0.0 {
                 self.stft_loss_history.push((progress.stft_loss * 1000.0) as u64);
-                if self.stft_loss_history.len() > 100 {
-                    self.stft_loss_history.remove(0);
+                if self.stft_loss_history.len() > 120 {
+                    self.stft_loss_history.drain(..20);
                 }
             }
 
@@ -971,8 +971,8 @@ impl App {
             }
 
             self.logs.push(msg);
-            if self.logs.len() > 500 {
-                self.logs.remove(0);
+            if self.logs.len() > 550 {
+                self.logs.drain(..50);
             }
         }
     }
