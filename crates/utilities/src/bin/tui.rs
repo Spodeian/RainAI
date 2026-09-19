@@ -508,6 +508,7 @@ impl App {
         if !manifest_exists {
             let _ = app.log_tx.send("[*] AutoPilot: Fresh environment detected. Scheduling autonomous dataset bootstrap...".to_string());
             app.auto_balance_deficits();
+            app.data_worker.freshen_dataset();
         } else {
             // Kick off an autonomous background freshening pass on startup
             app.data_worker.freshen_dataset();
@@ -794,12 +795,16 @@ impl App {
 
     /// Automatically balances deficit surfaces by running synthetic physical rain generation.
     pub fn auto_balance_deficits(&mut self) {
-        let deficit_surfaces: Vec<String> = self
+        let mut deficit_surfaces: Vec<String> = self
             .surface_quotas
             .iter()
             .filter(|q| q.deficit_count > 0)
             .map(|q| q.surface.clone())
             .collect();
+
+        if (self.total_chunks == 0 || self.surface_quotas.is_empty()) && deficit_surfaces.is_empty() {
+            deficit_surfaces = CANONICAL_SURFACES.iter().map(|s| s.to_string()).collect();
+        }
 
         if deficit_surfaces.is_empty() {
             let _ = self.log_tx.send("[+] No surface deficits detected. Shannon entropy H is well-balanced.".to_string());

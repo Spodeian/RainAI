@@ -256,14 +256,6 @@ impl DatabaseHealthWorker {
             }
         }
 
-        // Baseline fallback counts if manifest hasn't been generated yet
-        if total_chunks == 0 {
-            for (i, &surf) in CANONICAL_SURFACES.iter().enumerate() {
-                surface_counts.insert(surf.to_string(), 10 + (i * 3) % 7);
-            }
-            total_chunks = surface_counts.values().sum();
-        }
-
         let (entropy, quotas) = SurfaceEntropyAuditor::audit(&surface_counts);
 
         let deficit_surfaces: Vec<String> = quotas
