@@ -16,15 +16,21 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod conditioning;
 pub mod export;
 pub mod models;
+pub mod paths;
 pub mod preset;
 pub mod rain;
+pub mod surface;
 
+pub use conditioning::*;
 pub use export::*;
 pub use models::*;
+pub use paths::*;
 pub use preset::*;
 pub use rain::*;
+pub use surface::*;
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum ThemeMode {

@@ -47,6 +47,7 @@ use std::{
 };
 use sysinfo::System;
 
+use shared::{paths::WorkspacePaths, surface::CanonicalSurface};
 use utilities::{
     audio_preview::{AudioPreviewManager, PreferenceChoice},
     autopilot::{
@@ -58,11 +59,7 @@ use utilities::{
         CandleTrainingSteeringHandle, TrainingPhase, TrainingProgressUpdate, TrainingSessionState,
     },
     data_worker::{DatabaseHealthWorker, DataWorkerTelemetry},
-    features::run_features_pipeline,
-    golden_vectors::run_golden_vectors_pipeline,
-    ingest::run_ingestion_pipeline,
-    spatial_upmix::run_upmix_pipeline,
-    synth_rain::run_synth_pipeline,
+    pipeline::PipelineTask,
 };
 
 // High-Contrast Minimalist Black & Purple Theme
@@ -354,20 +351,14 @@ impl App {
         sys.refresh_all();
 
         // Check for existing session persistence for instant rehydration
-        let session_candidates = [
-            "checkpoints/candle/training_session.json",
-            "crates/inference/data/candle/training_session.json",
-            "training_session.json",
-        ];
         let mut loaded_session = TrainingSessionState::default();
-        for path in &session_candidates {
-            if let Some(state) = AtomicCheckpointManager::load_session_state(path) {
+        if let Some(path) = WorkspacePaths::resolve_session() {
+            if let Some(state) = AtomicCheckpointManager::load_session_state(&path) {
                 let _ = log_tx.send(format!(
                     "[+] Rehydrated previous session state from '{}' (Epoch {}/{}, VAE best={:.4}, Mamba best={:.4})",
-                    path, state.current_epoch, state.total_epochs, state.best_vae_loss, state.best_mamba_loss
+                    path.display(), state.current_epoch, state.total_epochs, state.best_vae_loss, state.best_mamba_loss
                 ));
                 loaded_session = state;
-                break;
             }
         }
 
@@ -503,8 +494,7 @@ impl App {
         app.deploy_models_in_process();
 
         // Autonomously check if dataset needs bootstrapping or freshening
-        let manifest_exists = Path::new("Data/processed/manifest.json").exists()
-            || Path::new("data/processed/manifest.json").exists();
+        let manifest_exists = WorkspacePaths::resolve_manifest().is_some();
         if !manifest_exists {
             let _ = app.log_tx.send("[*] AutoPilot: Fresh environment detected. Scheduling autonomous dataset bootstrap...".to_string());
             app.auto_balance_deficits();
@@ -524,15 +514,11 @@ impl App {
     pub fn trigger_sources_load(&self) {
         let tx = self.log_tx.clone();
         thread::spawn(move || {
-            let candidates = ["sources.json", "../sources.json", "../../sources.json"];
-            for path in &candidates {
-                if Path::new(path).exists() {
-                    if let Ok(data) = fs::read_to_string(path) {
-                        if let Ok(sources) = serde_json::from_str::<Vec<SourceItem>>(&data) {
-                            if let Ok(json_str) = serde_json::to_string(&sources) {
-                                let _ = tx.send(format!("SOURCES_PARSED:{}", json_str));
-                                return;
-                            }
+            if let Some(path) = WorkspacePaths::resolve_sources() {
+                if let Ok(data) = fs::read_to_string(&path) {
+                    if let Ok(sources) = serde_json::from_str::<Vec<SourceItem>>(&data) {
+                        if let Ok(json_str) = serde_json::to_string(&sources) {
+                            let _ = tx.send(format!("SOURCES_PARSED:{}", json_str));
                         }
                     }
                 }
@@ -734,63 +720,41 @@ impl App {
         });
     }
 
-    /// Starts an in-process data pipeline stage (ingest, upmix, features, golden_vectors, or synth).
-    pub fn start_in_process_data_pipeline(&mut self, stage: &'static str, target_surfaces: Option<Vec<String>>) {
+    /// Starts an in-process pipeline task using the strongly-typed PipelineTask enum.
+    pub fn start_in_process_pipeline_task(&mut self, task: PipelineTask, target_surfaces: Option<Vec<String>>) {
         if let Some(active) = &self.active_in_process_task {
-            let _ = self.log_tx.send(format!("[!] Cannot launch '{}': task '{}' is currently running.", stage, active));
+            let _ = self.log_tx.send(format!("[!] Cannot launch '{}': task '{}' is currently running.", task.short_code(), active));
             return;
         }
 
-        let desc = match stage {
-            "ingest" => "Multi-Source Audio Ingestion",
-            "upmix" => "Ambisonic FOA Spatial Upmixer",
-            "features" => "Acoustic Sub-Band Feature Extraction",
-            "golden_vectors" => "Golden Vector Numerical Verification",
-            "synth" => "Gunn-Kinzer Physical Raindrop Synthesis",
-            _ => "Unknown Pipeline Stage",
-        };
-
-        self.active_in_process_task = Some(desc.to_string());
-        let _ = self.log_tx.send(format!("[*] Launching in-process pipeline: {}...", desc));
+        self.active_in_process_task = Some(task.title().to_string());
+        let _ = self.log_tx.send(format!("[*] Launching in-process pipeline: {}...", task.title()));
 
         let tx = self.log_tx.clone();
-        let stage_str = stage.to_string();
+        let short_code = task.short_code().to_string();
         let stop_flag = Arc::new(AtomicBool::new(false));
 
         thread::spawn(move || {
-            let res: Result<usize> = match stage_str.as_str() {
-                "ingest" => run_ingestion_pipeline(stop_flag, Some(tx.clone())),
-                "upmix" => run_upmix_pipeline(
-                    Path::new("Data/rain"),
-                    Path::new("Data/processed"),
-                    stop_flag,
-                    Some(tx.clone()),
-                ),
-                "features" => run_features_pipeline(
-                    Path::new("Data/processed"),
-                    stop_flag,
-                    Some(tx.clone()),
-                ),
-                "golden_vectors" => run_golden_vectors_pipeline(Some(tx.clone())),
-                "synth" => run_synth_pipeline(
-                    Path::new("Data/processed"),
-                    target_surfaces.as_deref(),
-                    stop_flag,
-                    Some(tx.clone()),
-                ),
-                _ => Ok(0),
-            };
-
+            let res = task.execute(target_surfaces.as_deref(), stop_flag, Some(tx.clone()));
             match res {
                 Ok(count) => {
-                    let _ = tx.send(format!("[+] In-process task '{}' finished successfully ({} items).", stage_str, count));
+                    let _ = tx.send(format!("[+] In-process task '{}' finished successfully ({} items).", short_code, count));
                 }
                 Err(e) => {
-                    let _ = tx.send(format!("[ERR] In-process task '{}' encountered error: {}", stage_str, e));
+                    let _ = tx.send(format!("[ERR] In-process task '{}' encountered error: {}", short_code, e));
                 }
             }
-            let _ = tx.send(format!("TASK_COMPLETE:{}", stage_str));
+            let _ = tx.send(format!("TASK_COMPLETE:{}", short_code));
         });
+    }
+
+    /// Backward-compatible string-based trigger method delegating to PipelineTask.
+    pub fn start_in_process_data_pipeline(&mut self, stage: &'static str, target_surfaces: Option<Vec<String>>) {
+        if let Some(task) = PipelineTask::from_code(stage) {
+            self.start_in_process_pipeline_task(task, target_surfaces);
+        } else {
+            let _ = self.log_tx.send(format!("[!] Unknown pipeline stage: '{}'", stage));
+        }
     }
 
     /// Automatically balances deficit surfaces by running synthetic physical rain generation.
@@ -803,7 +767,7 @@ impl App {
             .collect();
 
         if (self.total_chunks == 0 || self.surface_quotas.is_empty()) && deficit_surfaces.is_empty() {
-            deficit_surfaces = CANONICAL_SURFACES.iter().map(|s| s.to_string()).collect();
+            deficit_surfaces = CanonicalSurface::ALL.iter().map(|s| s.as_str().to_string()).collect();
         }
 
         if deficit_surfaces.is_empty() {

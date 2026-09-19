@@ -8,17 +8,12 @@
 
 use rand::Rng;
 use rand_distr::{Distribution, Gamma};
+use shared::surface::CanonicalSurface;
 use std::f32::consts::PI;
 
-pub const DEFAULT_SAMPLE_RATE: u32 = 48000;
+pub use audio::physical::gunn_kinzer_terminal_velocity;
 
-/// Empirical Gunn-Kinzer terminal velocity formulation:
-/// $v_t(d) = 9.65 - 10.3 \cdot \exp(-0.6 d)$, clamped to $[0.8, 9.65]\,\text{m/s}$.
-#[inline]
-pub fn gunn_kinzer_terminal_velocity(d_mm: f32) -> f32 {
-    let d = d_mm.clamp(0.1, 5.5);
-    (9.65 - 10.3 * (-0.6 * d).exp()).max(0.8)
-}
+pub const DEFAULT_SAMPLE_RATE: u32 = 48000;
 
 /// Samples droplet diameters (in mm) from the Ulbrich Gamma Drop Size Distribution:
 /// $\Lambda = 4.1 \cdot R^{-0.21}$, shape $\mu + 1 = 3.0$, scale $= 1/\Lambda$.
@@ -82,71 +77,10 @@ pub fn render_single_droplet(
 
     let inv_sr = 1.0 / sample_rate as f32;
 
-    match surface {
-        "tin" | "roof" => {
-            let damp1_mult = (-180.0 * inv_sr).exp();
-            let damp2_mult = (-270.0 * inv_sr).exp();
-            let mut env1 = 0.5 * (diameter_mm / 2.0);
-            let mut env2 = 0.25 * (diameter_mm / 2.0);
-            let phase_add1 = 2.0 * PI * 1250.0 * inv_sr;
-            let phase_add2 = 2.0 * PI * 2550.0 * inv_sr;
-            let mut phase1 = 0.0f32;
-            let mut phase2 = 0.0f32;
-
-            for i in 0..actual_samples {
-                let s = phase1.sin() * env1 + phase2.sin() * env2;
-                left[start_idx + i] += s * l_gain;
-                right[start_idx + i] += s * r_gain;
-                phase1 += phase_add1;
-                phase2 += phase_add2;
-                env1 *= damp1_mult;
-                env2 *= damp2_mult;
-            }
-        }
-        "canvas" | "tent" => {
-            let damp_mult = (-450.0 * inv_sr).exp();
-            let mut env = 0.3f32;
-            let phase_add = 2.0 * PI * 400.0 * inv_sr;
-            let mut phase = 0.0f32;
-
-            for i in 0..actual_samples {
-                let s = phase.sin() * env;
-                left[start_idx + i] += s * l_gain;
-                right[start_idx + i] += s * r_gain;
-                phase += phase_add;
-                env *= damp_mult;
-            }
-        }
-        "glass" | "window" => {
-            let damp_mult = (-800.0 * inv_sr).exp();
-            let mut env = 0.6f32;
-            let phase_add = 2.0 * PI * 4500.0 * inv_sr;
-            let mut phase = 0.0f32;
-
-            for i in 0..actual_samples {
-                let s = phase.sin() * env;
-                left[start_idx + i] += s * l_gain;
-                right[start_idx + i] += s * r_gain;
-                phase += phase_add;
-                env *= damp_mult;
-            }
-        }
-        "wood" | "deck" => {
-            let damp_mult = (-300.0 * inv_sr).exp();
-            let mut env = 0.4f32;
-            let phase_add = 2.0 * PI * 800.0 * inv_sr;
-            let mut phase = 0.0f32;
-
-            for i in 0..actual_samples {
-                let s = phase.sin() * env;
-                left[start_idx + i] += s * l_gain;
-                right[start_idx + i] += s * r_gain;
-                phase += phase_add;
-                env *= damp_mult;
-            }
-        }
-        _ => {
-            // Water, Puddle, Pavement bubble resonance
+    let canonical = CanonicalSurface::from_tag(surface);
+    match canonical {
+        CanonicalSurface::WaterDeep | CanonicalSurface::PuddleShallow => {
+            // Minnaert cavitation bubble resonance for fluid surfaces
             let damping = (0.13 * f0 + 0.0072 * f0.powf(1.333)).clamp(100.0, 2500.0);
             let damp_mult = (-damping * inv_sr).exp();
             let mut env = 0.7f32;
@@ -163,6 +97,28 @@ pub fn render_single_droplet(
                 right[start_idx + i] += s * r_gain;
                 t += inv_sr;
                 env *= damp_mult;
+            }
+        }
+        _ => {
+            // Universal dual-mode plate/membrane acoustic resonator
+            let profile = canonical.modal_profile();
+            let damp1_mult = (-profile.damp1 * inv_sr).exp();
+            let damp2_mult = (-profile.damp2 * inv_sr).exp();
+            let mut env1 = profile.amp1 * (diameter_mm / 2.0);
+            let mut env2 = profile.amp2 * (diameter_mm / 2.0);
+            let phase_add1 = 2.0 * PI * profile.freq1 * inv_sr;
+            let phase_add2 = 2.0 * PI * profile.freq2 * inv_sr;
+            let mut phase1 = 0.0f32;
+            let mut phase2 = 0.0f32;
+
+            for i in 0..actual_samples {
+                let s = phase1.sin() * env1 + phase2.sin() * env2;
+                left[start_idx + i] += s * l_gain;
+                right[start_idx + i] += s * r_gain;
+                phase1 += phase_add1;
+                phase2 += phase_add2;
+                env1 *= damp1_mult;
+                env2 *= damp2_mult;
             }
         }
     }

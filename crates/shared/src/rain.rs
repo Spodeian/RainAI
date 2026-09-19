@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-pub const CONDITION_DIM: usize = 554;
+pub use crate::conditioning::CONDITION_DIM;
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum QualityTier {
@@ -71,6 +71,39 @@ impl Default for SurfaceMixture {
 }
 
 impl SurfaceMixture {
+    /// Returns the proportion for a given canonical surface.
+    pub fn get(&self, surface: crate::surface::CanonicalSurface) -> f32 {
+        use crate::surface::CanonicalSurface::*;
+        match surface {
+            TinRoof => self.tin,
+            Foliage => (self.leaves_broad + self.pine_needles) * 0.5,
+            Pavement | Asphalt => self.pavement,
+            WaterDeep => self.water_deep,
+            PuddleShallow => self.puddle_shallow,
+            CanvasTent => self.canvas_tent,
+            Glass => self.glass_window,
+            WoodDeck => self.wood_deck,
+        }
+    }
+
+    /// Sets the proportion for a given canonical surface.
+    pub fn set(&mut self, surface: crate::surface::CanonicalSurface, val: f32) {
+        use crate::surface::CanonicalSurface::*;
+        match surface {
+            TinRoof => self.tin = val,
+            Foliage => {
+                self.leaves_broad = val * 0.6;
+                self.pine_needles = val * 0.4;
+            }
+            Pavement | Asphalt => self.pavement = val,
+            WaterDeep => self.water_deep = val,
+            PuddleShallow => self.puddle_shallow = val,
+            CanvasTent => self.canvas_tent = val,
+            Glass => self.glass_window = val,
+            WoodDeck => self.wood_deck = val,
+        }
+    }
+
     /// Normalizes the surface values using a partition of unity (sum to 1.0)
     pub fn normalized(&self) -> [f32; 9] {
         let raw = [
@@ -644,71 +677,56 @@ impl RainState {
 
     /// Converts current UI parameters into the 554-dim conditioning vector as a fixed array without heap allocation
     pub fn to_conditioning_array(&self) -> [f32; CONDITION_DIM] {
-        let mut u = [0.0f32; CONDITION_DIM];
+        let clap = [1.0 / (512.0f32).sqrt(); 512];
+        let base_controls = [
+            self.weather.intensity,
+            self.wind.speed,
+            0.5,  // wind_azimuth
+            0.33, // legacy_surface
+            self.weather.runoff,
+            self.weather.temperature,
+            self.weather.humidity,
+            self.weather.pitch_angle,
+            self.weather.distance,
+            self.weather.enclosure,
+        ];
+        let surfaces = self.surfaces.normalized();
+        let wind_dynamics = [
+            self.wind.speed,
+            self.wind.gustiness,
+            self.wind.turbulence,
+            self.wind.howl,
+        ];
+        let side_sounds = [
+            self.side_sounds.insect_density,
+            self.side_sounds.insect_proximity,
+            self.side_sounds.insect_azimuth,
+            self.side_sounds.bird_activity,
+            self.side_sounds.bird_proximity,
+            self.side_sounds.bird_elevation,
+            self.side_sounds.fireplace_intensity,
+            self.side_sounds.fireplace_crackle_rate,
+            self.side_sounds.fireplace_azimuth,
+            self.side_sounds.fireplace_elevation,
+            self.side_sounds.thunder_proximity,
+            self.side_sounds.thunder_rumble_length,
+            self.side_sounds.thunder_azimuth,
+            self.side_sounds.thunder_elevation,
+            self.side_sounds.traffic_distance,
+            self.side_sounds.traffic_wetness,
+            self.side_sounds.traffic_azimuth_start,
+            self.side_sounds.traffic_azimuth_end,
+        ];
+        let drift = 0.2;
 
-        // 1. CLAP acoustic semantic projection (512-dim)
-        let clap_val = 1.0 / (512.0f32).sqrt();
-        for i in 0..512 {
-            u[i] = clap_val;
-        }
-
-        // 2. Base Sliders (10-dim: 512..522)
-        let legacy_surface = 0.33;
-        let wind_azimuth = 0.5;
-        u[512] = self.weather.intensity;
-        u[513] = self.wind.speed;
-        u[514] = wind_azimuth;
-        u[515] = legacy_surface;
-        u[516] = self.weather.runoff;
-        u[517] = self.weather.temperature;
-        u[518] = self.weather.humidity;
-        u[519] = self.weather.pitch_angle;
-        u[520] = self.weather.distance;
-        u[521] = self.weather.enclosure;
-
-        // 3. Normalized Surfaces (9-dim: 522..531)
-        let surf = self.surfaces.normalized();
-        u[522..531].copy_from_slice(&surf);
-
-        // 4. Wind Dynamics (4-dim: 531..535)
-        u[531] = self.wind.speed;
-        u[532] = self.wind.gustiness;
-        u[533] = self.wind.turbulence;
-        u[534] = self.wind.howl;
-
-        // 5. Spatialized Side Sounds (18-dim: 535..553)
-        // Insects (3)
-        u[535] = self.side_sounds.insect_density;
-        u[536] = self.side_sounds.insect_proximity;
-        u[537] = self.side_sounds.insect_azimuth;
-
-        // Birds (3)
-        u[538] = self.side_sounds.bird_activity;
-        u[539] = self.side_sounds.bird_proximity;
-        u[540] = self.side_sounds.bird_elevation;
-
-        // Fireplace (4)
-        u[541] = self.side_sounds.fireplace_intensity;
-        u[542] = self.side_sounds.fireplace_crackle_rate;
-        u[543] = self.side_sounds.fireplace_azimuth;
-        u[544] = self.side_sounds.fireplace_elevation;
-
-        // Thunder (4)
-        u[545] = self.side_sounds.thunder_proximity;
-        u[546] = self.side_sounds.thunder_rumble_length;
-        u[547] = self.side_sounds.thunder_azimuth;
-        u[548] = self.side_sounds.thunder_elevation;
-
-        // Traffic (4)
-        u[549] = self.side_sounds.traffic_distance;
-        u[550] = self.side_sounds.traffic_wetness;
-        u[551] = self.side_sounds.traffic_azimuth_start;
-        u[552] = self.side_sounds.traffic_azimuth_end;
-
-        // 6. Physics parameter drift tolerance (1-dim: 553)
-        u[553] = 0.2;
-
-        u
+        crate::conditioning::encode_conditioning_vector(
+            &clap,
+            &base_controls,
+            &surfaces,
+            &wind_dynamics,
+            &side_sounds,
+            drift,
+        )
     }
 
     /// Converts the current UI parameters into the exact 554-dimensional conditioning vector u
