@@ -593,7 +593,8 @@ impl CandleMamba2MoE {
     /// All experts participate with differentiable weights — no discrete gating or zeroing.
     /// `tau_moe`: softmax temperature (lower → sharper; 0.75 default). Tabu dampening
     /// subtracts `gamma_tabu * tabu_history` from logits before softmax.
-    pub fn forward_smooth_tabu(
+    /// Forward pass with continuous smooth softmax routing, temporal tabu logit dampening, and optional expert dropout.
+    pub fn forward_smooth_tabu_with_dropout(
         &self,
         z_prev: &Tensor,
         conditioning: &Tensor,
@@ -601,6 +602,7 @@ impl CandleMamba2MoE {
         tau_moe: f64,
         tabu_history: Option<&Tensor>,
         gamma_tabu: f64,
+        expert_dropout_prob: f32,
     ) -> Result<(Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)> {
         let x_in = Tensor::cat(&[z_prev, conditioning], 1)?;
         let h_in = self.in_proj.forward(&x_in)?.gelu_erf()?;
@@ -614,9 +616,25 @@ impl CandleMamba2MoE {
         }
 
         // Smooth softmax routing — all 8 experts receive continuous non-zero weights
-        let (smooth_weights, active_mask, mean_eff) =
+        let (mut smooth_weights, active_mask, mean_eff) =
             Self::route_smooth_softmax(&router_logits, tau_moe)?;
-        // Keep router_probs (for loss computations) as the same smooth distribution
+
+        // Expert Dropout: randomly zero out an expert to prevent co-adaptation and guarantee fault tolerance
+        if expert_dropout_prob > 0.0 {
+            use rand::Rng;
+            let mut rng = rand::thread_rng();
+            if rng.gen_range(0.0f32..1.0f32) < expert_dropout_prob {
+                let dropped_e = rng.gen_range(0..NUM_EXPERTS);
+                let mut mask_vec = vec![1.0f32; NUM_EXPERTS];
+                mask_vec[dropped_e] = 0.0f32;
+                let drop_mask = Tensor::from_vec(mask_vec, (1, NUM_EXPERTS), smooth_weights.device())?;
+                let masked = smooth_weights.broadcast_mul(&drop_mask)?;
+                let sum_w = (masked.sum_keepdim(1)? + 1e-8f64)?;
+                smooth_weights = masked.broadcast_div(&sum_w)?;
+            }
+        }
+
+        // Keep router_probs (for loss computations) as the smooth distribution
         let router_probs = smooth_weights.clone();
 
         // DeepSeek shared base expert
@@ -650,6 +668,27 @@ impl CandleMamba2MoE {
         let z_pred = self.out_affine.forward(&z_raw)?;
 
         Ok((z_pred, blended_state, router_probs, active_mask, mean_eff, router_logits))
+    }
+
+    /// Forward pass with continuous smooth softmax routing and temporal tabu logit dampening (zero expert dropout).
+    pub fn forward_smooth_tabu(
+        &self,
+        z_prev: &Tensor,
+        conditioning: &Tensor,
+        h_prev: &Tensor,
+        tau_moe: f64,
+        tabu_history: Option<&Tensor>,
+        gamma_tabu: f64,
+    ) -> Result<(Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)> {
+        self.forward_smooth_tabu_with_dropout(
+            z_prev,
+            conditioning,
+            h_prev,
+            tau_moe,
+            tabu_history,
+            gamma_tabu,
+            0.0,
+        )
     }
 
     /// Forward pass with smooth softmax routing (no tabu dampening).

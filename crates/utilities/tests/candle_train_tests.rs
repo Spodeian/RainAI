@@ -124,6 +124,8 @@ fn test_candle_pipeline_runner() {
         lambda_soup_deficit: 0.1,
         enable_latent_caching: false,
         continuous_refinement: false,
+        stochastic_hparams: false,
+        multi_env_simulation: false,
         output_dir: temp_dir.clone(),
         device: "cpu".to_string(),
     };
@@ -1092,5 +1094,211 @@ fn test_clip_grad_norm_varmap_nan_sanitization() {
         }
     }
 }
+
+#[test]
+fn test_moe_runtime_environment_sampling_and_telemetry() {
+    let device = Device::Cpu;
+    let mut rng = rand::thread_rng();
+
+    let envs = [
+        utilities::candle_train::MoERuntimeEnvironment::ConstrainedMobile,
+        utilities::candle_train::MoERuntimeEnvironment::BalancedDesktop,
+        utilities::candle_train::MoERuntimeEnvironment::StudioUltraFidelity,
+        utilities::candle_train::MoERuntimeEnvironment::ThermalThrottledPanic,
+    ];
+
+    for env in &envs {
+        let telem = env
+            .generate_telemetry(4, &device, &mut rng)
+            .expect("Telemetry generation failed");
+
+        assert_eq!(telem.telemetry.dims(), &[4, 4]);
+        assert_eq!(telem.user_weights.dims(), &[4, 3]);
+        assert_eq!(telem.quality_scores.dims(), &[4, 2]);
+        assert_eq!(telem.slice_level.dims(), &[4, 1]);
+
+        let t_vals = telem
+            .telemetry
+            .flatten_all()
+            .unwrap()
+            .to_vec1::<f32>()
+            .unwrap();
+        for v in t_vals {
+            assert!(v.is_finite(), "Telemetry value not finite: {v}");
+        }
+
+        assert!(
+            telem.tau_moe > 0.0,
+            "tau_moe must be positive: {}",
+            telem.tau_moe
+        );
+        assert!(
+            telem.gamma_tabu >= 0.0,
+            "gamma_tabu must be non-negative: {}",
+            telem.gamma_tabu
+        );
+        assert!(
+            telem.budget_experts >= 1.0,
+            "budget_experts must be >= 1.0: {}",
+            telem.budget_experts
+        );
+    }
+
+    // Verify panic mode constraints
+    let panic_env = utilities::candle_train::MoERuntimeEnvironment::ThermalThrottledPanic;
+    let panic_telem = panic_env.generate_telemetry(2, &device, &mut rng).unwrap();
+    assert_eq!(panic_telem.budget_experts, 1.0);
+    assert_eq!(panic_telem.expert_dropout, 0.0);
+}
+
+#[test]
+fn test_sparse_dirichlet_surface_mixtures() {
+    let mut rng = rand::thread_rng();
+
+    for _ in 0..20 {
+        let mixture = utilities::candle_train::sample_sparse_dirichlet_surfaces(&mut rng, 0.25);
+        assert_eq!(mixture.len(), 8);
+
+        let mut sum = 0.0f32;
+        let mut non_zero_count = 0;
+        for &w in &mixture {
+            assert!(w >= 0.0, "Dirichlet weight cannot be negative: {w}");
+            assert!(w.is_finite(), "Dirichlet weight must be finite");
+            sum += w;
+            if w > 0.05 {
+                non_zero_count += 1;
+            }
+        }
+        assert!(
+            (sum - 1.0).abs() < 1e-5,
+            "Dirichlet weights must sum to 1.0, got: {sum}"
+        );
+        // With alpha=0.25, sparsity concentrates mass on a few dominant surfaces
+        assert!(
+            non_zero_count <= 6,
+            "Expected sparse representation, found {non_zero_count} heavy weights"
+        );
+    }
+}
+
+#[test]
+fn test_expert_dropout_in_mamba2_moe() {
+    let device = Device::Cpu;
+    let varmap = VarMap::new();
+    let vs = VarBuilder::from_varmap(&varmap, DType::F32, &device);
+    let mamba = CandleMamba2MoE::new(vs).expect("Failed building CandleMamba2MoE");
+
+    let batch = generate_batch(2, &device, 0.0).expect("Failed generating batch");
+    let h_prev = Tensor::zeros((2, 128), DType::F32, &device).expect("Failed creating h_prev");
+
+    // Run forward pass with expert_dropout_prob = 1.0 (guarantees exactly one expert dropped)
+    let (z_pred, next_h, router_probs, _smooth_mask, _mean_eff, _logits) = mamba
+        .forward_smooth_tabu_with_dropout(
+            &batch.z_prev,
+            &batch.conditioning,
+            &h_prev,
+            0.75,
+            None,
+            0.0,
+            1.0, // 100% dropout
+        )
+        .expect("Forward pass with expert dropout failed");
+
+    assert_eq!(z_pred.dims(), &[2, LATENT_DIM]);
+    assert_eq!(next_h.dims(), &[2, 128]);
+    assert_eq!(router_probs.dims(), &[2, 8]);
+
+    let probs = router_probs.to_vec2::<f32>().unwrap();
+    for row in probs {
+        // One expert should have 0 weight (or near zero due to mask)
+        let zero_experts = row.iter().filter(|&&p| p < 1e-6).count();
+        assert_eq!(
+            zero_experts, 1,
+            "Exactly one expert should be dropped when dropout is 1.0"
+        );
+
+        let sum: f32 = row.iter().sum();
+        assert!(
+            (sum - 1.0).abs() < 1e-4,
+            "Remaining active experts must re-normalize to 1.0, got {sum}"
+        );
+    }
+}
+
+#[test]
+fn test_acoustic_enclosures_and_weather_regimes() {
+    let enclosures = [
+        utilities::candle_train::AcousticSpatialEnvironment::OpenFreeField,
+        utilities::candle_train::AcousticSpatialEnvironment::UrbanStreetCanyon,
+        utilities::candle_train::AcousticSpatialEnvironment::DenseForestCanopy,
+        utilities::candle_train::AcousticSpatialEnvironment::InteriorVehicleCabin,
+        utilities::candle_train::AcousticSpatialEnvironment::CoveredPorch,
+    ];
+
+    let weathers = [
+        utilities::candle_train::WeatherPrecipitationRegime::DrizzleMist,
+        utilities::candle_train::WeatherPrecipitationRegime::ModerateRain,
+        utilities::candle_train::WeatherPrecipitationRegime::CloudburstDownpour,
+        utilities::candle_train::WeatherPrecipitationRegime::SleetGraupelHybrid,
+    ];
+
+    for enclosure in &enclosures {
+        let mut bands = [0.5f32; utilities::candle_train::FILTER_BANDS];
+        let mut foa = [0.5f32, 0.1f32, 0.1f32, -0.5f32];
+        enclosure.apply_enclosure(&mut bands, &mut foa);
+
+        for b in bands {
+            assert!(b.is_finite() && b >= 0.0, "Enclosure produced invalid band: {b}");
+        }
+        for f in foa {
+            assert!(f.is_finite(), "Enclosure produced invalid FOA: {f}");
+        }
+    }
+
+    for weather in &weathers {
+        let mut cond = [0.5f32; utilities::candle_train::CONDITION_DIM];
+        let mut bands = [0.5f32; utilities::candle_train::FILTER_BANDS];
+        weather.apply_meteorology(&mut cond, &mut bands);
+
+        for c in cond {
+            assert!(
+                c.is_finite() && c >= 0.0,
+                "Weather regime produced invalid condition: {c}"
+            );
+        }
+        for b in bands {
+            assert!(
+                b.is_finite() && b >= 0.0,
+                "Weather regime produced invalid band: {b}"
+            );
+        }
+    }
+}
+
+#[test]
+fn test_multi_environment_training_pipeline_execution() {
+    let temp_dir = std::env::temp_dir().join(format!("rainai_multi_env_test_{}", rand::random::<u64>()));
+
+    let config = CandleTrainConfig {
+        output_dir: temp_dir.clone(),
+        use_real_data: false,
+        phases: vec![TrainingPhase::All],
+        vae_epochs: 1,
+        mamba_epochs: 1,
+        batch_size: 2,
+        max_batches: 2,
+        warmup_steps: 1,
+        stochastic_hparams: true,
+        multi_env_simulation: true,
+        device: "cpu".to_string(),
+        ..Default::default()
+    };
+
+    let result = run_candle_training_pipeline(&config);
+    assert!(result.is_ok(), "Multi-environment pipeline run failed: {:?}", result.err());
+
+    let _ = std::fs::remove_dir_all(temp_dir);
+}
+
 
 

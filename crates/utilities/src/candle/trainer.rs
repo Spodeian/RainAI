@@ -333,8 +333,129 @@ pub fn verify_varmap_integrity(varmap: &VarMap, name: &str) -> Result<()> {
 }
 
 // ============================================================================
-// 6. Pipeline Orchestrator & Configuration
+// 6. Pipeline Orchestrator & Multi-Environment Simulation
 // ============================================================================
+
+/// Hardware compute and operational runtime regimes for MoE training.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MoERuntimeEnvironment {
+    ConstrainedMobile,
+    BalancedDesktop,
+    StudioUltraFidelity,
+    ThermalThrottledPanic,
+}
+
+/// Simulated runtime telemetry bundle for the Invasive Meta-Controller.
+pub struct SimulatedEnvironmentTelemetry {
+    pub telemetry: Tensor,       // [B, 4] [buffer_health_ms, cpu_headroom, gpu_headroom, delta_t_ms]
+    pub user_weights: Tensor,    // [B, 3] [quality_pref, perf_pref, target_buffer_ms]
+    pub quality_scores: Tensor,  // [B, 2]
+    pub slice_level: Tensor,     // [B, 1]
+    pub budget_experts: f32,
+    pub target_buffer_ms: f32,
+    pub tau_moe: f64,
+    pub gamma_tabu: f64,
+    pub expert_dropout: f32,
+}
+
+impl MoERuntimeEnvironment {
+    pub fn sample_random<R: rand::Rng>(rng: &mut R) -> Self {
+        let p = rng.gen_range(0.0f32..1.0f32);
+        if p < 0.30 {
+            Self::ConstrainedMobile
+        } else if p < 0.65 {
+            Self::BalancedDesktop
+        } else if p < 0.90 {
+            Self::StudioUltraFidelity
+        } else {
+            Self::ThermalThrottledPanic
+        }
+    }
+
+    pub fn generate_telemetry<R: rand::Rng>(
+        &self,
+        batch_size: usize,
+        device: &Device,
+        rng: &mut R,
+    ) -> Result<SimulatedEnvironmentTelemetry> {
+        let mut telem_vec = Vec::with_capacity(batch_size * 4);
+        let mut user_vec = Vec::with_capacity(batch_size * 3);
+        let mut qual_vec = Vec::with_capacity(batch_size * 2);
+        let mut slice_vec = Vec::with_capacity(batch_size);
+
+        let (buf_range, cpu_range, gpu_range, dt_range, q_pref, p_pref, slice_range, q_range, budget, tau, tabu, drop_prob) = match self {
+            Self::ConstrainedMobile => (
+                (12.0f32, 28.0f32), (0.05f32, 0.35f32), (0.0f32, 0.15f32), (10.0f32, 25.0f32),
+                0.15f32, 0.85f32, (0.25f32, 0.50f32), (0.60f32, 0.80f32),
+                rng.gen_range(1.0f32..2.2f32),
+                0.35f64 * (rng.gen_range(-0.2f64..0.2f64)).exp(),
+                rng.gen_range(1.5f64..3.0f64),
+                0.08f32,
+            ),
+            Self::BalancedDesktop => (
+                (40.0f32, 70.0f32), (0.35f32, 0.70f32), (0.25f32, 0.65f32), (4.5f32, 6.0f32),
+                0.50f32, 0.50f32, (0.75f32, 1.00f32), (0.80f32, 0.93f32),
+                rng.gen_range(2.2f32..4.2f32),
+                0.75f64 * (rng.gen_range(-0.2f64..0.2f64)).exp(),
+                rng.gen_range(0.8f64..1.5f64),
+                0.04f32,
+            ),
+            Self::StudioUltraFidelity => (
+                (80.0f32, 160.0f32), (0.70f32, 0.98f32), (0.75f32, 0.99f32), (2.0f32, 5.33f32),
+                0.95f32, 0.05f32, (1.00f32, 1.00f32), (0.92f32, 0.99f32),
+                rng.gen_range(4.5f32..8.0f32),
+                1.35f64 * (rng.gen_range(-0.15f64..0.15f64)).exp(),
+                rng.gen_range(0.2f64..0.8f64),
+                0.02f32,
+            ),
+            Self::ThermalThrottledPanic => (
+                (2.0f32, 8.5f32), (0.01f32, 0.08f32), (0.0f32, 0.05f32), (20.0f32, 50.0f32),
+                0.05f32, 0.95f32, (0.10f32, 0.30f32), (0.40f32, 0.70f32),
+                1.0f32,
+                0.20f64,
+                3.5f64,
+                0.0f32,
+            ),
+        };
+
+        for _ in 0..batch_size {
+            let buf = rng.gen_range(buf_range.0..buf_range.1);
+            let cpu = rng.gen_range(cpu_range.0..cpu_range.1);
+            let gpu = rng.gen_range(gpu_range.0..gpu_range.1);
+            let dt = rng.gen_range(dt_range.0..dt_range.1);
+            telem_vec.extend_from_slice(&[buf, cpu, gpu, dt]);
+
+            let target_buf = (buf * 1.2).max(20.0);
+            user_vec.extend_from_slice(&[q_pref, p_pref, target_buf]);
+
+            let q1 = rng.gen_range(q_range.0..q_range.1);
+            let q2 = rng.gen_range(q_range.0..q_range.1);
+            qual_vec.extend_from_slice(&[q1, q2]);
+
+            let slice = rng.gen_range(slice_range.0..=slice_range.1);
+            slice_vec.push(slice);
+        }
+
+        let telemetry = Tensor::from_vec(telem_vec, (batch_size, 4), device)?;
+        let user_weights = Tensor::from_vec(user_vec, (batch_size, 3), device)?;
+        let quality_scores = Tensor::from_vec(qual_vec, (batch_size, 2), device)?;
+        let slice_level = Tensor::from_vec(slice_vec, (batch_size, 1), device)?;
+
+        let target_buf = buf_range.1;
+
+        Ok(SimulatedEnvironmentTelemetry {
+            telemetry,
+            user_weights,
+            quality_scores,
+            slice_level,
+            budget_experts: budget,
+            target_buffer_ms: target_buf,
+            tau_moe: tau,
+            gamma_tabu: tabu,
+            expert_dropout: drop_prob,
+        })
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TrainingPhase {
@@ -386,6 +507,8 @@ pub struct CandleTrainConfig {
     pub lambda_soup_deficit: f64,
     pub enable_latent_caching: bool,
     pub continuous_refinement: bool,
+    pub stochastic_hparams: bool,
+    pub multi_env_simulation: bool,
     pub output_dir: PathBuf,
     pub device: String,
 }
@@ -432,6 +555,8 @@ impl Default for CandleTrainConfig {
             lambda_soup_deficit: 0.1,
             enable_latent_caching: true,
             continuous_refinement: true,
+            stochastic_hparams: true,
+            multi_env_simulation: true,
             output_dir: PathBuf::from("crates/inference/data/candle"),
             device: "auto".to_string(),
         }
@@ -699,9 +824,17 @@ pub fn run_candle_training_pipeline_with_steering(
                         }
                     }
 
+                    let active_cfg_dropout = if config.stochastic_hparams {
+                        use rand_distr::{Beta, Distribution};
+                        let beta = Beta::new(2.0, 8.0).unwrap_or_else(|_| Beta::new(1.0, 1.0).unwrap());
+                        beta.sample(&mut rand::thread_rng())
+                    } else {
+                        config.cfg_dropout
+                    };
+
                     let batch = get_train_batch(
                         config.batch_size,
-                        config.cfg_dropout,
+                        active_cfg_dropout,
                         config.so3_aug_prob,
                         config.surface_mixup_prob,
                     )?;
@@ -728,8 +861,15 @@ pub fn run_candle_training_pipeline_with_steering(
                         &device,
                     )?;
 
+                    let active_stft_weight = if config.stochastic_hparams {
+                        use rand::Rng;
+                        config.stft_weight * (rand::thread_rng().gen_range(-0.10f64..0.10f64)).exp()
+                    } else {
+                        config.stft_weight
+                    };
+
                     let affine_ortho = compute_orthogonality_loss(affine_align.weight())?;
-                    let raw_batch_loss = ((((&loss + &spatial_loss)? + &quant_penalty)? + (&stft_loss * config.stft_weight)?)? + (&affine_ortho * 0.001)?)?;
+                    let raw_batch_loss = ((((&loss + &spatial_loss)? + &quant_penalty)? + (&stft_loss * active_stft_weight)?)? + (&affine_ortho * 0.001)?)?;
                     let total_batch_loss = soft_cap_loss(&raw_batch_loss, 100.0)?;
 
                     let batch_loss_val = total_batch_loss.to_scalar::<f32>()?;
@@ -930,10 +1070,6 @@ pub fn run_candle_training_pipeline_with_steering(
 
             let mut h_state = Tensor::zeros((config.batch_size, 128), DType::F32, &device)?;
             let mut telem_state = Tensor::zeros((config.batch_size, 32, 16), DType::F32, &device)?;
-            let telem_const = Tensor::full(0.5f32, (config.batch_size, 4), &device)?;
-            let user_w_const = Tensor::full(0.5f32, (config.batch_size, 3), &device)?;
-            let quality_const = Tensor::full(0.9f32, (config.batch_size, 2), &device)?;
-            let slice_const = Tensor::full(1.0f32, (config.batch_size, 1), &device)?;
 
             log_msg(&format!(
                 "[*] Smooth Softmax MoE Routing active (tau_moe: {:.2}, gamma_tabu: {:.2})",
@@ -1009,20 +1145,50 @@ pub fn run_candle_training_pipeline_with_steering(
                         }
                     }
 
+                    let active_cfg_dropout = if config.stochastic_hparams {
+                        use rand_distr::{Beta, Distribution};
+                        let beta = Beta::new(2.0, 8.0).unwrap_or_else(|_| Beta::new(1.0, 1.0).unwrap());
+                        beta.sample(&mut rng)
+                    } else {
+                        config.cfg_dropout
+                    };
+
                     let batch = get_train_batch(
                         config.batch_size,
-                        config.cfg_dropout,
+                        active_cfg_dropout,
                         config.so3_aug_prob,
                         config.surface_mixup_prob,
                     )?;
 
-                    let (z_pred, next_h, router_probs, _smooth_mask, mean_active, router_logits) = mamba_model.forward_smooth_tabu(
+                    let env_sim = if config.multi_env_simulation {
+                        let env = MoERuntimeEnvironment::sample_random(&mut rng);
+                        env.generate_telemetry(config.batch_size, &device, &mut rng)?
+                    } else {
+                        SimulatedEnvironmentTelemetry {
+                            telemetry: Tensor::full(0.5f32, (config.batch_size, 4), &device)?,
+                            user_weights: Tensor::full(0.5f32, (config.batch_size, 3), &device)?,
+                            quality_scores: Tensor::full(0.9f32, (config.batch_size, 2), &device)?,
+                            slice_level: Tensor::full(1.0f32, (config.batch_size, 1), &device)?,
+                            budget_experts: 2.0,
+                            target_buffer_ms: 50.0,
+                            tau_moe: config.tau_moe,
+                            gamma_tabu: config.gamma_tabu,
+                            expert_dropout: 0.0,
+                        }
+                    };
+
+                    let active_tau = env_sim.tau_moe;
+                    let active_gamma_tabu = env_sim.gamma_tabu;
+                    let active_expert_dropout = env_sim.expert_dropout;
+
+                    let (z_pred, next_h, router_probs, _smooth_mask, mean_active, router_logits) = mamba_model.forward_smooth_tabu_with_dropout(
                         &batch.z_prev,
                         &batch.conditioning,
                         &h_state,
-                        config.tau_moe,
+                        active_tau,
                         None,
                         0.0,
+                        active_expert_dropout,
                     )?;
                     h_state = next_h.detach();
                     epoch_active_exp += mean_active.to_scalar::<f32>()?;
@@ -1040,14 +1206,15 @@ pub fn run_candle_training_pipeline_with_steering(
 
                     for iter in 1..m_batch {
                         // Dynamically scale tabu so subsequent iterations push into distinct expert subspaces
-                        let dynamic_tabu = config.gamma_tabu * (1.0 + 0.25 * (iter as f64));
-                        let (step_z, _, step_probs, _, _, _) = mamba_model.forward_smooth_tabu(
+                        let dynamic_tabu = active_gamma_tabu * (1.0 + 0.25 * (iter as f64));
+                        let (step_z, _, step_probs, _, _, _) = mamba_model.forward_smooth_tabu_with_dropout(
                             &z_delib,
                             &batch.conditioning,
                             &h_state,
-                            config.tau_moe,
+                            active_tau,
                             Some(&tabu_sum),
                             dynamic_tabu,
+                            active_expert_dropout,
                         )?;
                         tabu_sum = (&tabu_sum + &step_probs)?;
                         prob_history.push(step_probs);
@@ -1056,12 +1223,21 @@ pub fn run_candle_training_pipeline_with_steering(
 
                     let diversity_loss = compute_expert_diversity_loss(&prob_history)?;
 
+                    let (active_jitter_sigma, active_eps_halt) = if config.stochastic_hparams {
+                        (
+                            config.stochastic_jitter_sigma * (10.0f32).powf(rng.gen_range(-0.8f32..0.3f32)),
+                            rng.gen_range(0.015f32..0.05f32),
+                        )
+                    } else {
+                        (config.stochastic_jitter_sigma, config.eps_thinking_halt)
+                    };
+
                     let (z_refined, steps_taken, halting_probs) = thinking_block.forward_thinking_with_jitter(
                         &z_pred,
                         &batch.conditioning,
                         m_batch,
-                        config.eps_thinking_halt,
-                        config.stochastic_jitter_sigma,
+                        active_eps_halt,
+                        active_jitter_sigma,
                     )?;
                     epoch_thinking_steps += steps_taken as f32;
 
@@ -1079,11 +1255,23 @@ pub fn run_candle_training_pipeline_with_steering(
                     let aux_loss = compute_moe_load_balancing_loss(&router_probs)?;
                     let router_z_loss = compute_router_z_loss(&router_logits)?;
 
-                    let meta_out = meta_controller.forward(&router_probs, &telem_const, &user_w_const, &quality_const, &slice_const, &telem_state)?;
+                    let meta_out = meta_controller.forward(
+                        &router_probs,
+                        &env_sim.telemetry,
+                        &env_sim.user_weights,
+                        &env_sim.quality_scores,
+                        &env_sim.slice_level,
+                        &telem_state,
+                    )?;
                     telem_state = meta_out.next_telem_state.detach();
 
                     let active_exp_val = mean_active.to_scalar::<f32>()?;
-                    let hwil_scalar = compute_continuous_hwil_penalty(50.0, 50.0, active_exp_val, 2.0);
+                    let hwil_scalar = compute_continuous_hwil_penalty(
+                        env_sim.target_buffer_ms * 0.9,
+                        env_sim.target_buffer_ms,
+                        active_exp_val,
+                        env_sim.budget_experts,
+                    );
                     let hwil_penalty = ((&meta_out.stress.mean_all()? * 0.01)? + (hwil_scalar as f64 * 0.005))?;
 
                     let (flow_loss, _base_flow) = if config.use_flow_matching {
@@ -1130,14 +1318,28 @@ pub fn run_candle_training_pipeline_with_steering(
                     // Contractive loss for Lyapunov stability
                     let contract_loss = compute_contractive_loss(&z_pred, &batch.z_prev, batch.z_prev2.as_ref(), 2.0)?;
 
+                    // Multi-Task Random Loss Weighting (RLW)
+                    let (rlw_z, rlw_flow, rlw_div, rlw_distill, rlw_soup, rlw_mfp) = if config.stochastic_hparams {
+                        let r1 = (rng.gen_range(-0.15f64..0.15f64)).exp();
+                        let r2 = (rng.gen_range(-0.15f64..0.15f64)).exp();
+                        let r3 = (rng.gen_range(-0.15f64..0.15f64)).exp();
+                        let r4 = (rng.gen_range(-0.15f64..0.15f64)).exp();
+                        let r5 = (rng.gen_range(-0.15f64..0.15f64)).exp();
+                        let r6 = (rng.gen_range(-0.15f64..0.15f64)).exp();
+                        let mean_r = (r1 + r2 + r3 + r4 + r5 + r6) / 6.0;
+                        (r1 / mean_r, r2 / mean_r, r3 / mean_r, r4 / mean_r, r5 / mean_r, r6 / mean_r)
+                    } else {
+                        (1.0, 1.0, 1.0, 1.0, 1.0, 1.0)
+                    };
+
                     let loss_step1 = (&traj_loss + (&aux_loss * 0.02)?)?;
-                    let loss_step2 = (&loss_step1 + (&router_z_loss * config.lambda_z)?)?;
-                    let loss_step3 = (&loss_step2 + (&flow_loss * 0.05)?)?;
+                    let loss_step2 = (&loss_step1 + (&router_z_loss * (config.lambda_z * rlw_z))?)?;
+                    let loss_step3 = (&loss_step2 + (&flow_loss * (0.05 * rlw_flow))?)?;
                     let loss_step4 = (&loss_step3 + &hwil_penalty)?;
-                    let loss_step5 = (&loss_step4 + (&diversity_loss * config.lambda_div)?)?;
-                    let loss_step6 = (&loss_step5 + (&distill_loss * config.lambda_distill)?)?;
-                    let loss_step7 = (&loss_step6 + (&soup_deficit * config.lambda_soup_deficit)?)?;
-                    let loss_step8 = (&loss_step7 + (&mfp_loss * 0.05)?)?;
+                    let loss_step5 = (&loss_step4 + (&diversity_loss * (config.lambda_div * rlw_div))?)?;
+                    let loss_step6 = (&loss_step5 + (&distill_loss * (config.lambda_distill * rlw_distill))?)?;
+                    let loss_step7 = (&loss_step6 + (&soup_deficit * (config.lambda_soup_deficit * rlw_soup))?)?;
+                    let loss_step8 = (&loss_step7 + (&mfp_loss * (0.05 * rlw_mfp))?)?;
                     let loss_step9 = (&loss_step8 + (&spike_loss * 0.01)?)?;
                     let loss_step10 = (&loss_step9 + (&ortho_loss * 0.001)?)?;
                     let loss_step11 = (&loss_step10 + (&contract_loss * 0.01)?)?;

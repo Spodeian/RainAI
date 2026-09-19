@@ -219,6 +219,141 @@ pub fn record_training_attribution_if_needed(meta: &crate::features::AudioMetada
     AsyncAttributionRecorder::get_or_init().record(&meta.filename, &meta.surface_tag);
 }
 
+/// Acoustic Spatial Enclosure environments modeling room reverberation and spatial boundary transfer functions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AcousticSpatialEnvironment {
+    OpenFreeField,
+    UrbanStreetCanyon,
+    DenseForestCanopy,
+    InteriorVehicleCabin,
+    CoveredPorch,
+}
+
+impl AcousticSpatialEnvironment {
+    pub fn sample_random<R: rand::Rng>(rng: &mut R) -> Self {
+        match rng.gen_range(0..5) {
+            0 => Self::OpenFreeField,
+            1 => Self::UrbanStreetCanyon,
+            2 => Self::DenseForestCanopy,
+            3 => Self::InteriorVehicleCabin,
+            _ => Self::CoveredPorch,
+        }
+    }
+
+    /// Modulates target filter bands and FOA spatial soundfield to reflect enclosure boundary physics
+    pub fn apply_enclosure(&self, bands: &mut [f32; FILTER_BANDS], foa: &mut [f32; FOA_CHANNELS]) {
+        match self {
+            Self::OpenFreeField => {
+                // Direct sound dominates: directional clarity high, no low-frequency cavity boom
+                foa[1] *= 1.1; // X
+                foa[2] *= 1.1; // Y
+            }
+            Self::UrbanStreetCanyon => {
+                // Dense reflections & flutter: mid-frequency boost (bands 4..10), higher diffuseness (W boost)
+                for b in 4..10 {
+                    bands[b] = (bands[b] * 1.25).min(20.0);
+                }
+                foa[0] = (foa[0] * 1.2).min(10.0); // W omni
+            }
+            Self::DenseForestCanopy => {
+                // High leaf scattering & soft ground absorption: HF roll-off (bands 11..16), diffuse spatial field
+                for b in 11..FILTER_BANDS {
+                    bands[b] *= 0.75;
+                }
+                foa[1] *= 0.8;
+                foa[2] *= 0.8;
+            }
+            Self::InteriorVehicleCabin => {
+                // Low-pass transmission through glass & metal chassis: heavy HF attenuation, standing wave resonance at bands 1..3
+                bands[1] = (bands[1] * 1.4).min(20.0);
+                bands[2] = (bands[2] * 1.3).min(20.0);
+                for b in 6..FILTER_BANDS {
+                    bands[b] *= 0.45;
+                }
+                // Frontal windshield proximity bias
+                foa[1] = (foa[1] + 0.2).clamp(-0.8, 0.8);
+            }
+            Self::CoveredPorch => {
+                // Asymmetric overhead dry damping + frontal wet field
+                foa[1] = (foa[1] + 0.15).clamp(-0.8, 0.8); // frontal bias
+                foa[3] *= 0.6; // overhead rain damping
+            }
+        }
+    }
+}
+
+/// Meteorological and precipitation weather regimes modulating droplet size dynamics and air absorption.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WeatherPrecipitationRegime {
+    DrizzleMist,
+    ModerateRain,
+    CloudburstDownpour,
+    SleetGraupelHybrid,
+}
+
+impl WeatherPrecipitationRegime {
+    pub fn sample_random<R: rand::Rng>(rng: &mut R) -> Self {
+        match rng.gen_range(0..4) {
+            0 => Self::DrizzleMist,
+            1 => Self::ModerateRain,
+            2 => Self::CloudburstDownpour,
+            _ => Self::SleetGraupelHybrid,
+        }
+    }
+
+    /// Modulates condition parameters and bands to reflect meteorological regime
+    pub fn apply_meteorology(&self, cond: &mut [f32; CONDITION_DIM], bands: &mut [f32; FILTER_BANDS]) {
+        match self {
+            Self::DrizzleMist => {
+                cond[512] = (cond[512] * 0.3).clamp(0.01, 1.0); // low rain rate
+                cond[513] = (cond[513] * 1.5).clamp(0.0, 1.0);  // high droplet density
+                cond[515] = (cond[515] * 1.3).clamp(0.0, 1.0);  // high freq ratio
+                for b in 12..FILTER_BANDS {
+                    bands[b] = (bands[b] * 1.3).min(20.0);
+                }
+            }
+            Self::ModerateRain => {
+                // Standard Marshall-Palmer baseline
+            }
+            Self::CloudburstDownpour => {
+                cond[512] = (cond[512] * 1.6 + 0.3).clamp(0.0, 1.0); // heavy rain rate
+                cond[517] = (cond[517] * 1.5 + 0.2).clamp(0.0, 1.0); // high RMS energy
+                for b in 0..5 {
+                    bands[b] = (bands[b] * 1.5).min(20.0); // bubble resonance & impact rumble
+                }
+            }
+            Self::SleetGraupelHybrid => {
+                cond[514] = (cond[514] * 1.2).clamp(0.0, 1.0);
+                cond[518] = (cond[518] * 0.8).clamp(0.0, 1.0); // lower spectral flatness (peaked impacts)
+                // Transient impact spikes in upper mids
+                bands[8] = (bands[8] * 1.4).min(20.0);
+                bands[10] = (bands[10] * 1.3).min(20.0);
+            }
+        }
+    }
+}
+
+/// Samples an 8-surface convex mixture vector from a sparsity-inducing Dirichlet distribution (alpha = 0.25).
+pub fn sample_sparse_dirichlet_surfaces<R: rand::Rng>(rng: &mut R, alpha: f32) -> [f32; 8] {
+    use rand_distr::{Distribution, Gamma};
+    let gamma = Gamma::new(alpha, 1.0).unwrap_or_else(|_| Gamma::new(1.0, 1.0).unwrap());
+    let mut weights = [0.0f32; 8];
+    let mut sum = 0.0f32;
+    for w in &mut weights {
+        let sample: f32 = gamma.sample(rng);
+        *w = sample;
+        sum += sample;
+    }
+    if sum > 1e-6 {
+        for w in &mut weights {
+            *w /= sum;
+        }
+    } else {
+        weights[0] = 1.0;
+    }
+    weights
+}
+
 static CACHED_MANIFEST: std::sync::Mutex<Option<(std::time::SystemTime, Vec<crate::features::AudioMetadata>)>> =
     std::sync::Mutex::new(None);
 
@@ -301,14 +436,13 @@ impl CandleManifestDataset {
             cond[517] = (meta.rms_energy * 20.0).clamp(0.0, 1.0);
             cond[518] = meta.spectral_flatness.clamp(0.0, 1.0);
 
-            // One-hot surface tag encoding or multi-surface convex mixup
+            // Compound Dirichlet surface sampling or single surface encoding
             let s_idx1 = surface_tag_to_idx(&meta.surface_tag);
             if surface_mixup_prob > 0.0 && rng.gen_range(0.0f32..1.0f32) < surface_mixup_prob {
-                let meta2 = self.entries.choose(&mut rng).expect("Dataset cannot be empty");
-                let s_idx2 = surface_tag_to_idx(&meta2.surface_tag);
-                let lambda = rng.gen_range(0.2f32..0.8f32);
-                cond[s_idx1] = lambda;
-                cond[s_idx2] += 1.0 - lambda;
+                let dirichlet_weights = sample_sparse_dirichlet_surfaces(&mut rng, 0.25);
+                for i in 0..8 {
+                    cond[522 + i] = dirichlet_weights[i];
+                }
             } else {
                 cond[s_idx1] = 1.0;
             }
@@ -332,6 +466,20 @@ impl CandleManifestDataset {
             foa[1] = ((meta.spectral_centroid / 8000.0) * 0.4 - 0.2).clamp(-0.8, 0.8);
             foa[2] = ((meta.high_freq_ratio - 0.5) * 0.4).clamp(-0.8, 0.8);
             foa[3] = (-0.5f32 * w_energy).clamp(-0.9, -0.1); // downward rain vector
+
+            // Sample Meteorological Weather Regime and apply physical acoustic modulation
+            let weather = WeatherPrecipitationRegime::sample_random(&mut rng);
+            weather.apply_meteorology(&mut cond, &mut bands);
+
+            // Sample Acoustic Spatial Enclosure and apply boundary transfer functions
+            let enclosure = AcousticSpatialEnvironment::sample_random(&mut rng);
+            enclosure.apply_enclosure(&mut bands, &mut foa);
+
+            // SpecAugment: stochastic frequency band masking (8% probability)
+            if rng.gen_range(0.0f32..1.0f32) < 0.08 {
+                let mask_b = rng.gen_range(0..FILTER_BANDS);
+                bands[mask_b] = 0.0;
+            }
 
             audio_feats.extend_from_slice(&feat);
             cond_vecs.extend_from_slice(&cond);
@@ -376,6 +524,15 @@ impl CandleManifestDataset {
             );
             target_foa = crate::stft_loss::apply_so3_foa_rotation(&target_foa, angles)?;
         }
+
+        // Apply continuous micro-head tracking spatial jitter (~0.85 degrees) to prevent binaural comb-filtering
+        let micro_sigma = 0.015f32;
+        let micro_angles = (
+            rng.gen_range(-micro_sigma..micro_sigma),
+            rng.gen_range(-micro_sigma..micro_sigma),
+            rng.gen_range(-micro_sigma..micro_sigma),
+        );
+        target_foa = crate::stft_loss::apply_so3_foa_rotation(&target_foa, micro_angles)?;
 
         Ok(TrainingBatch {
             audio_features,
