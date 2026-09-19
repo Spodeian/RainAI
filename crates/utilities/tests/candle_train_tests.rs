@@ -4,13 +4,13 @@ use candle_core::{DType, Device, Tensor};
 use candle_nn::{Module, VarBuilder, VarMap};
 use utilities::candle_train::{
     compute_beta_vae_loss, compute_beta_vae_loss_with_free_bits, compute_expert_diversity_loss,
-    compute_flow_matching_loss, compute_hierarchical_multi_res_loss, compute_latent_variance_loss,
-    compute_moe_load_balancing_loss, compute_physics_trajectory_loss, compute_router_entropy_loss,
-    compute_trajectory_diversity_loss, generate_batch, run_candle_training_pipeline,
-    CandleAffineAlignment, CandleConsistencyHead, CandleEngramBank, CandleInvasiveMetaController,
-    CandleJambaSelfAttention, CandleLatentAttention, CandleLearnedQuantizer, CandleMamba2MoE,
-    CandleMambaSSDBlock, CandleManifestDataset, CandleSpatialVae, CandleTrainConfig,
-    TrainingPhase, LATENT_DIM,
+    compute_expert_drift_loss, compute_flow_matching_loss, compute_hierarchical_multi_res_loss,
+    compute_latent_variance_loss, compute_moe_load_balancing_loss, compute_physics_trajectory_loss,
+    compute_router_entropy_loss, compute_soup_deficit_loss, compute_trajectory_diversity_loss,
+    generate_batch, run_candle_training_pipeline, CandleAffineAlignment, CandleConsistencyHead,
+    CandleEngramBank, CandleInvasiveMetaController, CandleJambaSelfAttention,
+    CandleLatentAttention, CandleLearnedQuantizer, CandleMamba2MoE, CandleMambaSSDBlock,
+    CandleManifestDataset, CandleSpatialVae, CandleTrainConfig, TrainingPhase, LATENT_DIM,
 };
 
 
@@ -1419,4 +1419,50 @@ fn test_trajectory_diversity_loss() {
 
     let loss_d_val: f32 = loss_diverse.to_scalar().expect("scalar");
     assert!(loss_d_val < 1e-4, "High variance batch should produce near-zero diversity loss, got {}", loss_d_val);
+}
+
+#[test]
+fn test_soup_deficit_huber_soft_cap() {
+    let device = Device::Cpu;
+
+    // Case 1: Small difference (|diff| <= 0.5) -> quadratic Huber 0.5 * e^2
+    let z_pred = Tensor::zeros((2, 64), DType::F32, &device).unwrap();
+    let z_soup_small = Tensor::full(0.2f32, (2, 64), &device).unwrap();
+    let loss_small = compute_soup_deficit_loss(&z_soup_small, &z_pred, 0.5, 10.0).unwrap();
+    let val_small: f32 = loss_small.to_scalar().unwrap();
+    let expected_small = 0.5 * 0.2 * 0.2;
+    assert!((val_small - expected_small).abs() < 1e-4, "Small diff must follow quadratic Huber: {val_small}");
+
+    // Case 2: Extreme divergence -> soft-capping bounds loss at max_cap (10.0)
+    let z_soup_extreme = Tensor::full(100.0f32, (2, 64), &device).unwrap();
+    let loss_extreme = compute_soup_deficit_loss(&z_soup_extreme, &z_pred, 0.5, 10.0).unwrap();
+    let val_extreme: f32 = loss_extreme.to_scalar().unwrap();
+    assert!(val_extreme <= 10.0, "Extreme deficit must not exceed soft cap 10.0, got: {val_extreme}");
+    assert!(val_extreme > 9.9, "Extreme deficit should saturate near soft cap 10.0, got: {val_extreme}");
+
+    // Backward pass check
+    let _ = loss_extreme.backward().expect("Backward pass through soft-capped soup deficit must succeed");
+}
+
+#[test]
+fn test_expert_weight_drift_penalty() {
+    let device = Device::Cpu;
+
+    let base_in = Tensor::eye(16, DType::F32, &device).unwrap();
+    // Expert well within drift bound (ratio <= 2.0)
+    let close_expert = (&base_in * 1.5).unwrap();
+    let pairs_close = vec![(&base_in, &close_expert)];
+    let loss_close = compute_expert_drift_loss(&pairs_close, 2.0).unwrap();
+    let val_close: f32 = loss_close.to_scalar().unwrap();
+    assert_eq!(val_close, 0.0, "Expert within tolerance should have zero drift penalty");
+
+    // Divergent expert (ratio > 2.0)
+    let divergent_expert = (&base_in * 4.0).unwrap();
+    let pairs_divergent = vec![(&base_in, &divergent_expert)];
+    let loss_div = compute_expert_drift_loss(&pairs_divergent, 2.0).unwrap();
+    let val_div: f32 = loss_div.to_scalar().unwrap();
+    assert!(val_div > 0.0, "Divergent expert must produce strictly positive drift penalty: {val_div}");
+
+    // Backward pass check
+    let _ = loss_div.backward().expect("Backward pass through expert drift loss must succeed");
 }

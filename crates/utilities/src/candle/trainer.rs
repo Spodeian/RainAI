@@ -1159,6 +1159,7 @@ pub fn run_candle_training_pipeline_with_steering(
                 let mut epoch_z = 0.0f32;
                 let mut epoch_div = 0.0f32;
                 let mut epoch_distill = 0.0f32;
+                let mut epoch_soup = 0.0f32;
                 let mut epoch_active_exp = 0.0f32;
                 let mut epoch_thinking_steps = 0.0f32;
                 let mut mamba_accum_grads: HashMap<candle_core::TensorId, Tensor> = HashMap::new();
@@ -1370,7 +1371,16 @@ pub fn run_candle_training_pipeline_with_steering(
                     let soup_fused = mamba_model.fusion.forward(&soup_out)?.gelu_erf()?;
                     let z_soup_raw = mamba_model.traj_head.forward(&soup_fused)?;
                     let z_soup = mamba_model.out_affine.forward(&z_soup_raw)?;
-                    let soup_deficit = (&z_soup - &z_pred.detach())?.sqr()?.mean_all()?;
+                    // Huber-smoothed, soft-capped soup distillation loss: guarantees strictly bounded gradients
+                    let soup_deficit = compute_soup_deficit_loss(&z_soup, &z_pred.detach(), 0.5, 10.0)?;
+
+                    // Progressive Soup Distillation Curriculum: warm up lambda_soup as epochs advance
+                    let soup_curriculum = (epoch as f64 / config.mamba_epochs.max(1) as f64).powf(0.75);
+                    let active_lambda_soup = config.lambda_soup_deficit * soup_curriculum;
+
+                    // Bounded Frobenius norm drift of residual expert weights relative to shared base
+                    let drift_pairs = mamba_model.get_expert_drift_pairs();
+                    let drift_loss = compute_expert_drift_loss(&drift_pairs, 2.5)?;
 
                     let z_t2_raw = mamba_model.traj_head_t2.forward(&soup_fused)?;
                     let z_t2 = mamba_model.out_affine.forward(&z_t2_raw)?;
@@ -1407,7 +1417,7 @@ pub fn run_candle_training_pipeline_with_steering(
                     let loss_step4 = (&loss_step3 + &hwil_penalty)?;
                     let loss_step5 = (&loss_step4 + (&diversity_loss * (config.lambda_div * rlw_div))?)?;
                     let loss_step6 = (&loss_step5 + (&distill_loss * (config.lambda_distill * rlw_distill))?)?;
-                    let loss_step7 = (&loss_step6 + (&soup_deficit * (config.lambda_soup_deficit * rlw_soup))?)?;
+                    let loss_step7 = (&loss_step6 + (&soup_deficit * (active_lambda_soup * rlw_soup))?)?;
                     let loss_step8 = (&loss_step7 + (&mfp_loss * (0.05 * rlw_mfp))?)?;
                     let loss_step9 = (&loss_step8 + (&spike_loss * 0.01)?)?;
                     let loss_step10 = (&loss_step9 + (&ortho_loss * 0.001)?)?;
@@ -1415,7 +1425,8 @@ pub fn run_candle_training_pipeline_with_steering(
                     let loss_step12 = (&loss_step11 + (&router_entropy_loss * config.lambda_router_entropy)?)?;
                     let loss_step13 = (&loss_step12 + (&traj_div_loss * config.lambda_traj_div)?)?;
                     let loss_step14 = (&loss_step13 + (&traj_var_loss * config.lambda_latent_var)?)?;
-                    let raw_total_loss = (&loss_step14 + &halt_penalty)?;
+                    let loss_step15 = (&loss_step14 + (&drift_loss * 0.005)?)?;
+                    let raw_total_loss = (&loss_step15 + &halt_penalty)?;
                     let total_loss = soft_cap_loss(&raw_total_loss, 50.0)?;
 
 
@@ -1438,6 +1449,7 @@ pub fn run_candle_training_pipeline_with_steering(
                     epoch_z += z_val;
                     epoch_div += div_val;
                     epoch_distill += distill_val;
+                    epoch_soup += soup_val;
 
                     if config.accumulation_steps > 1 {
                         let scaled_loss = (total_loss / config.accumulation_steps as f64)?;
@@ -1581,16 +1593,21 @@ pub fn run_candle_training_pipeline_with_steering(
                 }
                 let avg_val_loss = val_loss_sum / val_batches as f32;
 
+                let avg_soup = epoch_soup / config.max_batches as f32;
+
                 log_msg(&format!(
-                    "Mamba2-MoE Epoch [{}/{}] - Traj: {:.5} (Flow: {:.5}, Aux: {:.5}, Z: {:.4}, Div: {:.4}, Distill: {:.4}) | Exp: {:.1}/8, Think: {:.1} iters | Val Loss: {:.5}",
-                    epoch, config.mamba_epochs, avg_loss, avg_flow, avg_aux, avg_z, avg_div, avg_distill, avg_exp, avg_steps, avg_val_loss
+                    "Mamba2-MoE Epoch [{}/{}] - Traj: {:.5} (Flow: {:.5}, Aux: {:.5}, Soup: {:.4}, Z: {:.4}, Div: {:.4}, Distill: {:.4}) | Exp: {:.1}/8, Think: {:.1} iters | Val Loss: {:.5}",
+                    epoch, config.mamba_epochs, avg_loss, avg_flow, avg_aux, avg_soup, avg_z, avg_div, avg_distill, avg_exp, avg_steps, avg_val_loss
                 ));
 
                 session.current_epoch = epoch;
                 session.total_epochs = config.mamba_epochs;
                 session.last_mamba_loss = avg_loss;
+                session.last_soup_deficit = avg_soup;
                 session.loss_history.push((avg_loss * 1000.0).max(0.0) as u64);
                 if session.loss_history.len() > 500 { session.loss_history.drain(..50); }
+                session.soup_deficit_history.push((avg_soup * 1000.0).max(0.0) as u64);
+                if session.soup_deficit_history.len() > 500 { session.soup_deficit_history.drain(..50); }
                 session.timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
 
                 if avg_val_loss < best_mamba_val_loss {

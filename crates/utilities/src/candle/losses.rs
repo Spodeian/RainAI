@@ -5,7 +5,7 @@
 //! and multi-resolution reconstruction loss.
 
 use anyhow::Result;
-use candle_core::{DType, Tensor};
+use candle_core::{DType, Device, Tensor};
 use serde::{Deserialize, Serialize};
 
 use super::*;
@@ -445,4 +445,49 @@ impl Default for ModelCollapseDiagnostics {
     }
 }
 
+/// Bounded, Huber-smoothed dense soup distillation deficit loss.
+/// Evaluates: SoftCap(Huber_delta(z_soup - z_pred), max_cap).
+/// - For small differences (|e| <= delta): Quadratic 0.5 * e^2 for smooth sub-gradient convergence.
+/// - For moderate differences (|e| > delta): Linear delta * |e| - 0.5 * delta^2 to eliminate quadratic divergence.
+/// - For extreme divergence: SoftCap asymptotically bounds the total loss at `max_cap`, preventing runaway feedback loops.
+pub fn compute_soup_deficit_loss(
+    z_soup: &Tensor,
+    z_pred: &Tensor,
+    delta: f64,
+    max_cap: f64,
+) -> Result<Tensor> {
+    let diff = (z_soup - z_pred)?;
+    let huber = crate::stft_loss::huber_loss(&diff, delta)?;
+    let capped = soft_cap_loss(&huber, max_cap)?;
+    Ok(capped)
+}
 
+/// Regularization penalty bounding the Frobenius norm drift of residual expert weights relative to the shared base:
+/// L_drift = sum_k relu(||Delta W_k||_F / (||W_base||_F + eps) - max_ratio)^2.
+/// Guarantees that residual experts remain true low-rank perturbations without divergent weight explosions.
+pub fn compute_expert_drift_loss(
+    drift_pairs: &[(&Tensor, &Tensor)],
+    max_ratio: f64,
+) -> Result<Tensor> {
+    if drift_pairs.is_empty() {
+        return Ok(Tensor::zeros((), DType::F32, &Device::Cpu)?);
+    }
+
+    let dev = drift_pairs[0].0.device();
+    let mut total_penalty = Tensor::zeros((), DType::F32, dev)?;
+    let eps = 1e-6f64;
+
+    for &(base_w, expert_w) in drift_pairs {
+        let base_norm = (base_w.sqr()?.sum_all()? + (eps * eps))?.sqrt()?;
+        let delta_w = (expert_w - base_w)?;
+        let delta_norm = (delta_w.sqr()?.sum_all()? + (eps * eps))?.sqrt()?;
+        let ratio = delta_norm.broadcast_div(&base_norm)?;
+        let max_ratio_t = Tensor::full(max_ratio as f32, ratio.shape(), ratio.device())?;
+        let excess = (ratio - max_ratio_t)?.relu()?;
+        let penalty = excess.sqr()?.mean_all()?;
+        total_penalty = (&total_penalty + &penalty)?;
+    }
+
+    let count = drift_pairs.len() as f64;
+    Ok((total_penalty / count)?)
+}

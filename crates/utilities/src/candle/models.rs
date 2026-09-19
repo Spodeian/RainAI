@@ -467,10 +467,29 @@ impl CandleMamba2MoE {
     }
 
     /// Derives dynamic soup blend coefficients from router probabilities:
-    /// alpha = softmax(soup_proj(router_probs))
+    /// alpha = softmax(router_logits + 0.1 * soup_proj(router_probs))
+    /// This formulation anchors alpha near the router's optimal expert mixture at initialization,
+    /// eliminating arbitrary initial distortion while allowing learned refinement.
     pub fn router_to_soup_coefficients(&self, router_probs: &Tensor) -> Result<Tensor> {
-        let logits = self.soup_proj.forward(router_probs)?;
-        Ok(candle_nn::ops::softmax(&logits, 1)?)
+        let residual_logits = self.soup_proj.forward(router_probs)?;
+        let log_p = (router_probs.clamp(1e-8f32, 1.0f32)?.log()? + (&residual_logits * 0.1)?)?;
+        Ok(candle_nn::ops::softmax(&log_p, 1)?)
+    }
+
+    /// Returns corresponding (base_weight, expert_weight) pairs across all experts
+    /// for computing the Frobenius norm weight drift regularization.
+    pub fn get_expert_drift_pairs(&self) -> Vec<(&Tensor, &Tensor)> {
+        let mut pairs = Vec::with_capacity(self.experts.len() * 3);
+        let base_in = self.shared_base.in_proj.weight();
+        let base_rec = self.shared_base.rec_proj.weight();
+        let base_out = self.shared_base.out_proj.weight();
+
+        for expert in &self.experts {
+            pairs.push((base_in, expert.in_proj.weight()));
+            pairs.push((base_rec, expert.rec_proj.weight()));
+            pairs.push((base_out, expert.out_proj.weight()));
+        }
+        pairs
     }
 
 

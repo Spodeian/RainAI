@@ -335,14 +335,16 @@ impl Default for DenseSoupTracker {
 
 impl DenseSoupTracker {
     /// Update tracking metrics and adaptively adjust lambda_soup.
+    /// Uses bounded adjustment with hysteresis deadband [0.03, 0.12] and soft 1.08x multipliers,
+    /// capping maximum lambda_soup at 0.25 (down from 1.0) to prevent runaway loss dominance.
     pub fn update(&mut self, sparse_l: f64, soup_l: f64) -> f64 {
         self.sparse_loss = sparse_l;
         self.soup_loss = soup_l;
         self.deficit = (soup_l - sparse_l).max(0.0);
 
-        if self.deficit > 0.15 {
-            self.lambda_soup = (self.lambda_soup * 1.25).min(1.0);
-        } else if self.deficit < 0.04 {
+        if self.deficit > 0.12 {
+            self.lambda_soup = (self.lambda_soup * 1.08).min(0.25);
+        } else if self.deficit < 0.03 {
             self.lambda_soup = (self.lambda_soup * 0.95).max(self.base_lambda);
         }
 
