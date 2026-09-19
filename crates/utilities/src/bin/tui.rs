@@ -49,7 +49,10 @@ use sysinfo::System;
 
 use utilities::{
     audio_preview::{AudioPreviewManager, PreferenceChoice},
-    autopilot::{probe_host_nvidia_gpu, CANONICAL_SURFACES, HardwareProfile, SurfaceEntropyAuditor, SurfaceQuota},
+    autopilot::{
+        probe_host_nvidia_gpu, AutoPilotConvergenceTracker, HardwareProfile, SurfaceEntropyAuditor,
+        SurfaceQuota, CANONICAL_SURFACES,
+    },
     candle_train::{
         run_candle_training_pipeline_with_steering, AtomicCheckpointManager, CandleTrainConfig,
         CandleTrainingSteeringHandle, TrainingPhase, TrainingProgressUpdate, TrainingSessionState,
@@ -329,6 +332,11 @@ pub struct App {
     pub log_tx: Sender<String>,
     last_tick: Instant,
     pub last_auto_balance: Instant,
+
+    // Autonomous Convergence & Dataset Freshening
+    pub convergence_tracker: AutoPilotConvergenceTracker,
+    pub is_freshening_data: bool,
+    pub last_freshen_time: Instant,
 }
 
 impl Default for App {
@@ -483,6 +491,9 @@ impl App {
             log_tx,
             last_tick: Instant::now(),
             last_auto_balance: Instant::now(),
+            convergence_tracker: AutoPilotConvergenceTracker::default(),
+            is_freshening_data: false,
+            last_freshen_time: Instant::now(),
         };
 
         app.trigger_sources_load();
@@ -491,12 +502,16 @@ impl App {
         // Autonomously verify and stage models if already trained
         app.deploy_models_in_process();
 
-        // Autonomously check if dataset needs bootstrapping
+        // Autonomously check if dataset needs bootstrapping or freshening
         let manifest_exists = Path::new("Data/processed/manifest.json").exists()
             || Path::new("data/processed/manifest.json").exists();
         if !manifest_exists {
             let _ = app.log_tx.send("[*] AutoPilot: Fresh environment detected. Scheduling autonomous dataset bootstrap...".to_string());
             app.auto_balance_deficits();
+        } else {
+            // Kick off an autonomous background freshening pass on startup
+            app.data_worker.freshen_dataset();
+            let _ = app.log_tx.send("[*] AutoPilot: Manifest discovered. Autonomous background data freshening activated.".to_string());
         }
 
         // Autonomously initiate in-process training on launch
@@ -798,6 +813,35 @@ impl App {
         self.start_in_process_data_pipeline("synth", Some(deficit_surfaces));
     }
 
+    /// Autonomously prompts the data ingester to freshen data in the background while training continues.
+    pub fn freshen_dataset_in_background(&mut self) {
+        if self.last_freshen_time.elapsed() < Duration::from_secs(15) {
+            return;
+        }
+        self.last_freshen_time = Instant::now();
+        self.is_freshening_data = true;
+
+        let _ = self.log_tx.send(
+            "[*] AutoPilot: Triggering autonomous background data freshening pass (trickling sources, deficit balance, quota rotation)...".to_string()
+        );
+
+        // Signal background DatabaseHealthWorker to immediately trickle sources and prune
+        self.data_worker.freshen_dataset();
+
+        // Also backfill deficits if no data task is currently running
+        if self.active_in_process_task.is_none() {
+            let deficit_surfaces: Vec<String> = self
+                .surface_quotas
+                .iter()
+                .filter(|q| q.deficit_count > 0)
+                .map(|q| q.surface.clone())
+                .collect();
+            if !deficit_surfaces.is_empty() {
+                self.start_in_process_data_pipeline("synth", Some(deficit_surfaces));
+            }
+        }
+    }
+
     /// Standalone deployment logic that can be invoked on boot, on training completion, or via UI.
     pub fn deploy_models_standalone(log_tx: &Sender<String>) -> bool {
         let src_candidates = [
@@ -919,6 +963,18 @@ impl App {
             }
 
             if progress.loss > 0.0 {
+                let loss_f64 = progress.loss as f64;
+                if self.convergence_tracker.record_loss(loss_f64) {
+                    let _ = self.log_tx.send(format!(
+                        "[⚡] AutoPilot: Loss plateau detected (stagnation {}/{} at loss {:.4}). Ingester prompted to freshen data while training continues!",
+                        self.convergence_tracker.stagnation_count,
+                        self.convergence_tracker.stagnation_limit,
+                        loss_f64
+                    ));
+                    self.freshen_dataset_in_background();
+                    self.convergence_tracker.reset_stage();
+                }
+
                 self.loss_history.push((progress.loss * 1000.0) as u64);
                 if self.loss_history.len() > 120 {
                     self.loss_history.drain(..20);
@@ -950,6 +1006,7 @@ impl App {
         while let Ok(msg) = self.log_rx.try_recv() {
             if msg.starts_with("TASK_COMPLETE:") {
                 self.active_in_process_task = None;
+                self.is_freshening_data = false;
                 self.trigger_manifest_refresh();
                 continue;
             }
@@ -1229,7 +1286,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                             }
                         }
                         KeyCode::Char('s') if app.active_tab == 0 => {
-                            app.auto_balance_deficits();
+                            app.freshen_dataset_in_background();
                         }
 
                         // Tab 1: Dataset & 9-Surface Health
@@ -1247,7 +1304,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                             }
                         }
                         KeyCode::Char('s') if app.active_tab == 1 => {
-                            app.auto_balance_deficits();
+                            app.freshen_dataset_in_background();
                         }
                         KeyCode::Char('i') if app.active_tab == 1 => {
                             app.start_in_process_data_pipeline("ingest", None);
@@ -1403,9 +1460,15 @@ fn ui(f: &mut ratatui::Frame, app: &App) {
             } else {
                 String::new()
             };
+            let autonomous_title = if app.is_freshening_data {
+                " [AUTONOMOUS] Training Active · Freshening Data in Background"
+            } else {
+                " [AUTONOMOUS] In-Process Training Active"
+            };
             (
                 format!(
-                    " [AUTONOMOUS] In-Process Training Active | Stage: {}{}| Speed: {:.1} chk/s | Quota: {:.1}/15.0 GB ({:.1}%) | Press [Space] to Pause ",
+                    "{} | Stage: {}{}| Speed: {:.1} chk/s | Quota: {:.1}/15.0 GB ({:.1}%) | Press [Space] to Pause ",
+                    autonomous_title,
                     app.flight_stage,
                     batch_str,
                     app.throughput,
@@ -1902,7 +1965,7 @@ fn render_tab_dataset_health(f: &mut ratatui::Frame, app: &App, area: Rect) {
     let pipeline_actions = vec![
         ListItem::new(Line::from(vec![
             Span::styled("[s] ", Style::default().fg(COLOR_ALERT).add_modifier(Modifier::BOLD)),
-            Span::raw("Synthesize Deficits  |  "),
+            Span::raw("Freshen & Auto-Balance  |  "),
             Span::styled("[i] ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
             Span::raw("Ingest  |  "),
             Span::styled("[u] ", Style::default().fg(COLOR_SUCCESS).add_modifier(Modifier::BOLD)),
@@ -1913,7 +1976,11 @@ fn render_tab_dataset_health(f: &mut ratatui::Frame, app: &App, area: Rect) {
             Span::raw("Golden"),
         ])),
     ];
-    let action_list = List::new(pipeline_actions).block(Block::default().title(" Pure-Rust Data Pipeline Execution ").borders(Borders::ALL));
+    let action_list = List::new(pipeline_actions).block(
+        Block::default()
+            .title(" AUTONOMOUS DATA PIPELINE (SELF-DRIVING · MANUAL OVERRIDES) ")
+            .borders(Borders::ALL)
+    );
     f.render_widget(action_list, right_chunks[3]);
 }
 
@@ -2433,7 +2500,7 @@ fn render_help_modal(f: &mut ratatui::Frame, area: Rect) {
         ]),
         Line::from("  [0]..[3] or Tab/BackTab   : Switch active tabs (0:Flight Deck, 1:Dataset, 2:Blueprint, 3:Logs)"),
         Line::from("  [Space]                   : Pause / Resume in-process training"),
-        Line::from("  [s]                       : Trigger Autonomous Acoustic Deficit Auto-Balancing (Gunn-Kinzer)"),
+        Line::from("  [s]                       : Trigger Autonomous Data Freshening & Quota Balancing"),
         Line::from("  [d]                       : Deploy converged models to WebGPU & Inference Engine"),
         Line::from("  [c]                       : Toggle Audio Monitor Mode (Continuous Live Stream / On-Demand)"),
         Line::from("  [m]                       : Mute / Unmute audio monitor"),

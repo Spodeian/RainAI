@@ -72,6 +72,7 @@ pub enum DataWorkerCommand {
     TriggerAudit,
     SetAutoBalance(bool),
     ForceBackfillDeficits,
+    FreshenData,
     Shutdown,
 }
 
@@ -117,6 +118,7 @@ impl DatabaseHealthWorker {
 
             while !stop_signal_clone.load(Ordering::Relaxed) {
                 // Process incoming commands non-blocking
+                let mut force_freshen = false;
                 while let Ok(cmd) = cmd_rx.try_recv() {
                     match cmd {
                         DataWorkerCommand::Shutdown => {
@@ -125,6 +127,9 @@ impl DatabaseHealthWorker {
                         }
                         DataWorkerCommand::SetAutoBalance(enabled) => {
                             auto_balance = enabled;
+                        }
+                        DataWorkerCommand::FreshenData => {
+                            force_freshen = true;
                         }
                         DataWorkerCommand::TriggerAudit | DataWorkerCommand::ForceBackfillDeficits => {
                             // Immediate pass triggered below
@@ -144,9 +149,9 @@ impl DatabaseHealthWorker {
                 let proc_dir = manifest_path.parent().unwrap_or_else(|| Path::new("data/processed"));
 
                 // 2. Trickle in & categorise new data
-                if auto_balance {
+                if auto_balance || force_freshen {
                     iteration += 1;
-                    if iteration % 2 == 0 {
+                    if iteration % 2 == 0 || force_freshen {
                         if let Ok(Some(action_desc)) = Self::trickle_in_and_categorize(
                             &manifest_path,
                             &sources_path,
@@ -160,13 +165,13 @@ impl DatabaseHealthWorker {
                     }
                 }
 
-                // 3. If auto-balance is enabled and entropy is below target (0.90), heal deficits
-                if auto_balance && telemetry.entropy < 0.90 && !telemetry.deficit_surfaces.is_empty() {
+                // 3. If auto-balance or force-freshen is enabled, heal deficits
+                if (auto_balance || force_freshen) && (!telemetry.deficit_surfaces.is_empty() || telemetry.entropy < 0.90) {
                     let backfilled = Self::heal_deficits(&telemetry.deficit_surfaces);
                     healed_count += backfilled;
                     telemetry.chunks_healed_or_synthesized = healed_count;
                     telemetry.last_action = format!(
-                        "Auto-balanced {} deficit chunks across: {}",
+                        "Freshened & balanced {} deficit chunks across: {}",
                         backfilled,
                         telemetry.deficit_surfaces.join(", ")
                     );
@@ -615,6 +620,11 @@ impl DatabaseHealthWorker {
             latest = Some(msg);
         }
         latest
+    }
+
+    /// Trigger an immediate dataset freshening pass in the background.
+    pub fn freshen_dataset(&self) {
+        let _ = self.cmd_tx.send(DataWorkerCommand::FreshenData);
     }
 }
 
