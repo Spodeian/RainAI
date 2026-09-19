@@ -446,6 +446,13 @@ pub async fn download_file_with_retry(
     }
 }
 
+fn chrono_lite_timestamp() -> String {
+    let duration = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .unwrap_or_default();
+    format!("{}.{:03}s_since_epoch", duration.as_secs(), duration.subsec_millis())
+}
+
 use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -469,18 +476,16 @@ pub async fn run_ingestion_pipeline_async(
     log_tx: Option<Sender<String>>,
 ) -> Result<usize> {
     let emit_log = |msg: String| {
+        tracing::info!("{}", msg);
         if let Some(ref tx) = log_tx {
             let _ = tx.send(msg);
         }
     };
 
-    emit_log("[*] Starting in-process Asynchronous Multi-Source Audio Ingest...".to_string());
+    emit_log("[*] Starting in-process Asynchronous Multi-Source Audio Ingest (Pure-Rust)...".to_string());
 
-    let candidates = [
-        PathBuf::from("sources.json"),
-        PathBuf::from("../sources.json"),
-    ];
-    let db_path = candidates.iter().find(|p| p.exists()).cloned().unwrap_or_else(|| PathBuf::from("sources.json"));
+    let db_path = shared::paths::WorkspacePaths::resolve_sources()
+        .unwrap_or_else(|| PathBuf::from("sources.json"));
     if !db_path.exists() {
         emit_log("[!] sources.json catalog not found.".to_string());
         return Ok(0);
@@ -489,44 +494,133 @@ pub async fn run_ingestion_pipeline_async(
     let db_content = tokio::fs::read_to_string(&db_path).await?;
     let curated_sources: Vec<DownloadItem> = serde_json::from_str(&db_content)?;
 
-    let target_dir = PathBuf::from("Data/rain");
+    let attr_path = shared::paths::WorkspacePaths::resolve_attributions()
+        .unwrap_or_else(|| PathBuf::from("Data/rain/ATTRIBUTIONS.txt"));
+    let target_dir = attr_path.parent().unwrap_or(Path::new("Data/rain")).to_path_buf();
     tokio::fs::create_dir_all(&target_dir).await?;
+    let provenance_file = target_dir.join("manifest_provenance.json");
 
     let client = reqwest::Client::builder()
-        .user_agent("RainAI-Dataset-Collector/4.0")
-        .timeout(Duration::from_secs(30))
+        .user_agent("RainAI-Dataset-Collector/4.0 (Pure-Rust; Zero-Python)")
+        .timeout(Duration::from_secs(45))
         .pool_idle_timeout(Duration::from_secs(15))
         .build()?;
 
+    let mut quota = SurfaceBalanceQuota::new(5);
+    for item in &curated_sources {
+        quota.record(CanonicalSurface::from_category_tag(&item.category));
+    }
+
+    emit_log(format!(
+        "[*] Catalog: {} candidate sources across 9 canonical surfaces (Normalized Diversity: {:.1}%)",
+        curated_sources.len(),
+        quota.normalized_diversity() * 100.0
+    ));
+
     let mut downloaded_count = 0usize;
+    let mut provenance_records = Vec::new();
+    let mut category_distribution: HashMap<String, usize> = HashMap::new();
+    let mut surface_distribution: HashMap<String, usize> = HashMap::new();
+
     for item in curated_sources {
         if stop_signal.load(Ordering::Relaxed) {
             emit_log("[!] Audio ingest aborted by user token.".to_string());
             break;
         }
 
-        let (allowed, _, _) = LicenseVerifier::verify(&item.license);
+        let canonical = CanonicalSurface::from_category_tag(&item.category);
+        let (allowed, tier, reason) = LicenseVerifier::verify(&item.license);
         if !allowed {
+            emit_log(format!("  [i] Skipping non-approved source '{}': {}", item.filename, reason));
+            continue;
+        }
+
+        // Account for absence of easily accessed Python environment:
+        // Validate direct HTTP/HTTPS endpoint. If an external CLI method is declared,
+        // log a clear informative note and skip rather than attempting an invalid request.
+        if item.ingest_method != "direct_http" || (!item.url.starts_with("http://") && !item.url.starts_with("https://")) {
+            emit_log(format!(
+                "  [i] Skipping source '{}' (Method: {}, requires external Python CLI; pure-Rust HTTP mode active)",
+                item.filename, item.ingest_method
+            ));
             continue;
         }
 
         let dest = target_dir.join(&item.filename);
-        if dest.exists() {
-            continue;
+        let already_existed = dest.exists();
+
+        if !already_existed {
+            emit_log(format!("  -> Downloading '{}' ({}, {:?})", item.filename, canonical.as_str(), tier));
+            match download_file_with_retry(&client, &item.url, &dest).await {
+                Ok(()) => {
+                    downloaded_count += 1;
+                }
+                Err(e) => {
+                    emit_log(format!("  [!] Failed downloading {}: {}", item.filename, e));
+                    if dest.exists() {
+                        let _ = tokio::fs::remove_file(&dest).await;
+                    }
+                    continue;
+                }
+            }
         }
 
-        emit_log(format!("  -> Downloading '{}' ({})", item.filename, item.category));
-        match download_file_with_retry(&client, &item.url, &dest).await {
-            Ok(()) => {
-                downloaded_count += 1;
-            }
-            Err(e) => {
-                emit_log(format!("  [!] Failed downloading {}: {}", item.filename, e));
+        // Provenance metadata & acoustic screening
+        let sha256 = compute_file_sha256(&dest).unwrap_or_else(|_| "hash_error".to_string());
+        let file_size_bytes = std::fs::metadata(&dest).map(|m| m.len()).unwrap_or(0);
+
+        let quality = if item.filename.ends_with(".wav") {
+            analyze_wav_file(&dest).ok()
+        } else {
+            None
+        };
+
+        let log_line = format!(
+            "Platform: {} | File: {} | Category: {} (Surface: {}) | Tier: {:?} | License: {} | SHA256: {} | URL: {}\n",
+            item.source_platform, item.filename, item.category, canonical.as_str(), tier, item.license, sha256, item.url
+        );
+
+        // Append to ATTRIBUTIONS.txt if newly acquired
+        if !already_existed {
+            if let Ok(mut f) = tokio::fs::OpenOptions::new().create(true).append(true).open(&attr_path).await {
+                let _ = f.write_all(log_line.as_bytes()).await;
             }
         }
+
+        *category_distribution.entry(item.category.clone()).or_insert(0) += 1;
+        *surface_distribution.entry(canonical.as_str().to_string()).or_insert(0) += 1;
+
+        provenance_records.push(ProvenanceRecord {
+            filename: item.filename,
+            source_url: item.url,
+            source_platform: item.source_platform,
+            category: item.category,
+            canonical_surface: canonical,
+            license: item.license,
+            license_tier: tier,
+            sha256,
+            file_size_bytes,
+            quality,
+        });
     }
 
-    emit_log(format!("[+] Ingestion finished. {} new sources acquired.", downloaded_count));
+    // Persist complete provenance manifest
+    let manifest = ProvenanceManifest {
+        generated_at_utc: chrono_lite_timestamp(),
+        total_sources: provenance_records.len(),
+        normalized_surface_diversity: quota.normalized_diversity(),
+        category_distribution,
+        surface_distribution,
+        records: provenance_records,
+    };
+    if let Ok(json_str) = serde_json::to_string_pretty(&manifest) {
+        let _ = tokio::fs::write(&provenance_file, json_str).await;
+    }
+
+    emit_log(format!(
+        "[+] Ingestion finished. {} new sources acquired (total verified: {}). Provenance saved to {:?}.",
+        downloaded_count, manifest.total_sources, provenance_file
+    ));
     Ok(downloaded_count)
 }
 

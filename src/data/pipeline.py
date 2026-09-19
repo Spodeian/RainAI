@@ -6,8 +6,17 @@ import argparse
 import json
 import subprocess
 import sys
+import warnings
 import zipfile
 from pathlib import Path
+
+warnings.warn(
+    "src/data/pipeline.py is deprecated. All ingestion and spatial preprocessing are now implemented in pure Rust. "
+    "Use `cargo run -p utilities --bin rainai_ingest`, `rainai_upmix`, or the interactive TUI `rainai_studio`.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 import numpy as np
 import torch
 import torchaudio

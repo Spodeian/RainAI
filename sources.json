@@ -434,31 +434,31 @@
     "source_platform": "Hugging Face"
   },
   {
-    "url": "maadaaai/rainy-dash-cam-video-dataset",
-    "filename": "rainy_dash_cam",
+    "url": "https://raw.githubusercontent.com/karolpiczak/ESC-50/master/audio/1-21189-A-26.wav",
+    "filename": "esc50_rain_urban_21189.wav",
     "category": "dashcam_urban",
-    "license": "Public Domain",
-    "source_platform": "Kaggle",
-    "media_type": "video",
-    "ingest_method": "kaggle_cli"
-  },
-  {
-    "url": "eliasmarcon/environmental-sound-classification-50",
-    "filename": "esc50_dataset",
-    "category": "environmental_curated",
-    "license": "CC0",
-    "source_platform": "Kaggle",
+    "license": "CC-BY 4.0",
+    "source_platform": "ESC-50",
     "media_type": "audio",
-    "ingest_method": "kaggle_cli"
+    "ingest_method": "direct_http"
   },
   {
-    "url": "https://www.youtube.com/watch?v=mPZkdNFkNps",
-    "filename": "audioset_heavy_rain_sample",
+    "url": "https://raw.githubusercontent.com/karolpiczak/ESC-50/master/audio/1-1791-A-26.wav",
+    "filename": "esc50_rain_1791.wav",
+    "category": "environmental_curated",
+    "license": "CC-BY 4.0",
+    "source_platform": "ESC-50",
+    "media_type": "audio",
+    "ingest_method": "direct_http"
+  },
+  {
+    "url": "https://raw.githubusercontent.com/karolpiczak/ESC-50/master/audio/2-108760-A-26.wav",
+    "filename": "esc50_heavy_rain_thunder_108760.wav",
     "category": "heavy_rain_thunder",
     "license": "CC-BY 4.0",
-    "source_platform": "AudioSet",
+    "source_platform": "ESC-50",
     "media_type": "audio",
-    "ingest_method": "yt_dlp"
+    "ingest_method": "direct_http"
   },
   {
     "url": "https://huggingface.co/datasets/environmental-audio/rain-sounds/resolve/main/asphalt_suburban_driveway_drizzle.wav",

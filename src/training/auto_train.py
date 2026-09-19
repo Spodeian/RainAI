@@ -404,6 +404,14 @@ def print_summary_table(logger: RainAILogger, total_time: float, phase_times: di
 
 
 def main():
+    import warnings
+    warnings.warn(
+        "src/training/auto_train.py is deprecated in favor of the pure-Rust Candle training engine. "
+        "Use `cargo run -p utilities --bin rainai_train_candle -- --profile balanced` or the interactive TUI `rainai_studio`.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
     parser = argparse.ArgumentParser(
         description="RainAI Automated Training & Multi-Backend Pipeline",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter

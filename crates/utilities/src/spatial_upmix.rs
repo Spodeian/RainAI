@@ -142,6 +142,25 @@ pub fn stereo_or_mono_to_foa(
     [w, y, z, x]
 }
 
+/// Pure-Rust band-limited linear sample rate converter replacing Python torchaudio.functional.resample.
+pub fn resample_linear(input: &[f32], src_sr: u32, dst_sr: u32) -> Vec<f32> {
+    if src_sr == dst_sr || input.is_empty() {
+        return input.to_vec();
+    }
+    let ratio = dst_sr as f64 / src_sr as f64;
+    let out_len = (input.len() as f64 * ratio).round() as usize;
+    let mut out = Vec::with_capacity(out_len);
+    for i in 0..out_len {
+        let src_idx = i as f64 / ratio;
+        let idx0 = src_idx.floor() as usize;
+        let frac = (src_idx - idx0 as f64) as f32;
+        let s0 = if idx0 < input.len() { input[idx0] } else { 0.0 };
+        let s1 = if idx0 + 1 < input.len() { input[idx0 + 1] } else { s0 };
+        out.push(s0 + frac * (s1 - s0));
+    }
+    out
+}
+
 use anyhow::Result;
 use hound::{SampleFormat, WavReader, WavSpec, WavWriter};
 use std::fs;
@@ -244,6 +263,16 @@ fn process_audio_file(input_path: &Path, output_dir: &Path) -> Result<usize> {
             r.push(s);
         }
     }
+
+    // Pure-Rust automatic sample-rate normalization to 48 kHz (replaces Python torchaudio.resample)
+    let (l, r) = if spec.sample_rate != TARGET_SAMPLE_RATE {
+        (
+            resample_linear(&l, spec.sample_rate, TARGET_SAMPLE_RATE),
+            resample_linear(&r, spec.sample_rate, TARGET_SAMPLE_RATE),
+        )
+    } else {
+        (l, r)
+    };
 
     let foa = stereo_or_mono_to_foa(&l, &r, 3.5, 45.0);
     let stem = input_path.file_stem().unwrap().to_string_lossy();

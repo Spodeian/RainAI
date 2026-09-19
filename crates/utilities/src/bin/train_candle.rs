@@ -17,6 +17,12 @@ fn main() -> Result<()> {
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
+            "--profile" => {
+                if i + 1 < args.len() {
+                    apply_profile(&mut config, &args[i + 1]);
+                    i += 1;
+                }
+            }
             "--autopilot" => {
                 is_autopilot = true;
             }
@@ -256,6 +262,7 @@ fn main() -> Result<()> {
                 println!("Usage: rainai_train_candle [OPTIONS]");
                 println!();
                 println!("Options:");
+                println!("  --profile <name>                   Preset profile (smoke-test, balanced, production, export-only)");
                 println!("  --autopilot                        Run autonomous self-driving training mission");
                 println!("  --phases <vae|mamba|export|all...> Training phases to execute");
                 println!("  --epochs <N>                       Sets both VAE and Mamba epochs");
@@ -282,3 +289,43 @@ fn main() -> Result<()> {
 
     Ok(())
 }
+
+fn apply_profile(config: &mut CandleTrainConfig, profile: &str) {
+    match profile.to_lowercase().as_str() {
+        "smoke-test" | "smoketest" | "smoke" => {
+            config.vae_epochs = 1;
+            config.mamba_epochs = 1;
+            config.max_batches = 2;
+            config.batch_size = 2;
+            config.accumulation_steps = 1;
+            config.phases = vec![TrainingPhase::All];
+        }
+        "balanced" => {
+            config.vae_epochs = 3;
+            config.mamba_epochs = 2;
+            config.max_batches = 30;
+            config.batch_size = 4;
+            config.accumulation_steps = 2;
+            config.phases = vec![TrainingPhase::All];
+        }
+        "production" | "prod" => {
+            config.vae_epochs = 10;
+            config.mamba_epochs = 5;
+            config.max_batches = 500;
+            config.batch_size = 4;
+            config.accumulation_steps = 2;
+            config.phases = vec![TrainingPhase::All];
+        }
+        "export-only" | "export" => {
+            config.vae_epochs = 0;
+            config.mamba_epochs = 0;
+            config.max_batches = 0;
+            config.phases = vec![TrainingPhase::Export];
+        }
+        "custom" => {}
+        other => {
+            tracing::warn!("Unrecognized profile '{}', falling back to defaults.", other);
+        }
+    }
+}
+
