@@ -240,9 +240,10 @@ impl CosineAnnealingWithWarmup {
         } else if self.current_step >= self.total_steps {
             self.min_lr
         } else {
-            // Cosine decay
-            let progress = (self.current_step - self.warmup_steps) as f64
-                / (self.total_steps - self.warmup_steps).max(1) as f64;
+            // Cosine decay with strictly clamped progress
+            let progress = ((self.current_step.saturating_sub(self.warmup_steps)) as f64
+                / (self.total_steps.saturating_sub(self.warmup_steps)).max(1) as f64)
+                .clamp(0.0, 1.0);
             let factor = 0.5 * (1.0 + (progress * std::f64::consts::PI).cos());
             self.min_lr + (self.base_lr - self.min_lr) * factor
         }
@@ -255,8 +256,9 @@ impl CosineAnnealingWithWarmup {
         } else if self.current_step >= self.total_steps {
             self.min_lr
         } else {
-            let progress = (self.current_step.saturating_sub(self.warmup_steps)) as f64
-                / (self.total_steps.saturating_sub(self.warmup_steps)).max(1) as f64;
+            let progress = ((self.current_step.saturating_sub(self.warmup_steps)) as f64
+                / (self.total_steps.saturating_sub(self.warmup_steps)).max(1) as f64)
+                .clamp(0.0, 1.0);
             let factor = 0.5 * (1.0 + (progress * std::f64::consts::PI).cos());
             self.min_lr + (self.base_lr - self.min_lr) * factor
         }
@@ -264,6 +266,8 @@ impl CosineAnnealingWithWarmup {
 }
 
 /// Global gradient norm clipping for Candle `VarMap` and `GradStore`.
+/// Detects any non-finite gradient (NaN/Inf) and sanitizes all gradients to zero
+/// to prevent optimizer momentum corruption and silent parameter poisoning.
 pub fn clip_grad_norm_varmap(
     varmap: &VarMap,
     grads: &mut candle_core::backprop::GradStore,
@@ -271,6 +275,7 @@ pub fn clip_grad_norm_varmap(
 ) -> Result<f64> {
     let mut sum_sq = 0.0f64;
     let mut active_grads = Vec::new();
+    let mut has_non_finite = false;
 
     for var in varmap.all_vars() {
         let t = var.as_tensor();
@@ -279,8 +284,26 @@ pub fn clip_grad_norm_varmap(
             if norm_sq.is_finite() {
                 sum_sq += norm_sq;
                 active_grads.push((t.clone(), grad.clone()));
+            } else {
+                has_non_finite = true;
+                tracing::warn!(
+                    "[!] Non-finite gradient detected in parameter shape {:?}! norm_sq is {:?}",
+                    t.dims(),
+                    norm_sq
+                );
             }
         }
+    }
+
+    if has_non_finite || !sum_sq.is_finite() {
+        tracing::warn!("[!] Non-finite gradient encountered across VarMap! Sanitizing all gradients to zero to prevent momentum poisoning.");
+        for var in varmap.all_vars() {
+            let t = var.as_tensor();
+            if grads.get(t).is_some() {
+                grads.insert(t, t.zeros_like()?);
+            }
+        }
+        return Ok(0.0);
     }
 
     let total_norm = sum_sq.sqrt();
@@ -607,6 +630,7 @@ pub fn run_candle_training_pipeline_with_steering(
 
             let vae_params = ParamsAdamW {
                 lr: config.learning_rate,
+                eps: 1e-6,
                 ..Default::default()
             };
             let mut vae_opt = AdamW::new(vae_varmap.all_vars(), vae_params)?;
@@ -704,9 +728,16 @@ pub fn run_candle_training_pipeline_with_steering(
                         &device,
                     )?;
 
-                    let total_batch_loss = (((&loss + &spatial_loss)? + &quant_penalty)? + (&stft_loss * config.stft_weight)?)?;
+                    let affine_ortho = compute_orthogonality_loss(affine_align.weight())?;
+                    let raw_batch_loss = ((((&loss + &spatial_loss)? + &quant_penalty)? + (&stft_loss * config.stft_weight)?)? + (&affine_ortho * 0.001)?)?;
+                    let total_batch_loss = soft_cap_loss(&raw_batch_loss, 100.0)?;
 
                     let batch_loss_val = total_batch_loss.to_scalar::<f32>()?;
+                    if !batch_loss_val.is_finite() {
+                        tracing::warn!("[!] Non-finite VAE batch loss encountered ({:?}) at epoch {} batch {}, skipping update", batch_loss_val, epoch, batch_idx);
+                        continue;
+                    }
+
                     let recon_val = recon.to_scalar::<f32>()?;
                     let kl_val = kl.to_scalar::<f32>()?;
                     let stft_val = stft_loss.to_scalar::<f32>()?;
@@ -726,9 +757,14 @@ pub fn run_candle_training_pipeline_with_steering(
                         for var in vae_varmap.all_vars() {
                             let t = var.as_tensor();
                             if let Some(g) = batch_grads.get(t) {
-                                match vae_accum_grads.get_mut(&t.id()) {
-                                    Some(acc) => *acc = (acc as &Tensor + g)?,
-                                    None => { vae_accum_grads.insert(t.id(), g.clone()); }
+                                let is_finite = g.sqr()?.sum_all()?.to_scalar::<f32>()?.is_finite();
+                                if is_finite {
+                                    match vae_accum_grads.get_mut(&t.id()) {
+                                        Some(acc) => *acc = (acc as &Tensor + g)?,
+                                        None => { vae_accum_grads.insert(t.id(), g.clone()); }
+                                    }
+                                } else {
+                                    tracing::warn!("[!] Non-finite gradient in accumulation for VAE, skipping tensor");
                                 }
                             }
                         }
@@ -741,19 +777,27 @@ pub fn run_candle_training_pipeline_with_steering(
                                     final_grads.insert(t, g);
                                 }
                             }
-                            let _norm = clip_grad_norm_varmap(&vae_varmap, &mut final_grads, config.max_grad_norm)?;
-                            vae_opt.step(&final_grads)?;
-                            let current_lr = vae_scheduler.step();
-                            vae_opt.set_learning_rate(current_lr);
-                            vae_ema.update(&vae_varmap)?;
+                            let norm = clip_grad_norm_varmap(&vae_varmap, &mut final_grads, config.max_grad_norm)?;
+                            if norm > 1e-12 {
+                                vae_opt.step(&final_grads)?;
+                                let current_lr = vae_scheduler.step();
+                                vae_opt.set_learning_rate(current_lr);
+                                vae_ema.update(&vae_varmap)?;
+                            } else {
+                                tracing::warn!("[!] Skipping VAE optimizer step due to zero or sanitized gradient norm");
+                            }
                         }
                     } else {
                         let mut grads = total_batch_loss.backward()?;
-                        let _norm = clip_grad_norm_varmap(&vae_varmap, &mut grads, config.max_grad_norm)?;
-                        vae_opt.step(&grads)?;
-                        let current_lr = vae_scheduler.step();
-                        vae_opt.set_learning_rate(current_lr);
-                        vae_ema.update(&vae_varmap)?;
+                        let norm = clip_grad_norm_varmap(&vae_varmap, &mut grads, config.max_grad_norm)?;
+                        if norm > 1e-12 {
+                            vae_opt.step(&grads)?;
+                            let current_lr = vae_scheduler.step();
+                            vae_opt.set_learning_rate(current_lr);
+                            vae_ema.update(&vae_varmap)?;
+                        } else {
+                            tracing::warn!("[!] Skipping VAE optimizer step due to zero or sanitized gradient norm");
+                        }
                     }
 
                     total_processed_samples += config.batch_size;
@@ -870,6 +914,7 @@ pub fn run_candle_training_pipeline_with_steering(
 
             let mamba_params = ParamsAdamW {
                 lr: config.learning_rate,
+                eps: 1e-6,
                 ..Default::default()
             };
             let mut mamba_opt = AdamW::new(mamba_varmap.all_vars(), mamba_params)?;
@@ -1066,14 +1111,24 @@ pub fn run_candle_training_pipeline_with_steering(
                     let h_comb = mamba_model.in_proj.forward(&comb_in)?.gelu_erf()?;
                     let (soup_out, _) = mamba_model.compute_dense_soup(&h_comb, &h_state, &soup_alpha)?;
                     let soup_fused = mamba_model.fusion.forward(&soup_out)?.gelu_erf()?;
-                    let z_soup = mamba_model.traj_head.forward(&soup_fused)?;
+                    let z_soup_raw = mamba_model.traj_head.forward(&soup_fused)?;
+                    let z_soup = mamba_model.out_affine.forward(&z_soup_raw)?;
                     let soup_deficit = (&z_soup - &z_pred.detach())?.sqr()?.mean_all()?;
 
-                    let z_t2 = mamba_model.traj_head_t2.forward(&soup_fused)?;
-                    let z_t3 = mamba_model.traj_head_t3.forward(&soup_fused)?;
+                    let z_t2_raw = mamba_model.traj_head_t2.forward(&soup_fused)?;
+                    let z_t2 = mamba_model.out_affine.forward(&z_t2_raw)?;
+                    let z_t3_raw = mamba_model.traj_head_t3.forward(&soup_fused)?;
+                    let z_t3 = mamba_model.out_affine.forward(&z_t3_raw)?;
 
                     let mfp_loss = (((&z_t2 - &batch.z_target)?.sqr()?.mean_all()? * config.mfp_decay)?
                         + ((&z_t3 - &batch.z_target)?.sqr()?.mean_all()? * (config.mfp_decay * config.mfp_decay))?)?;
+
+                    // Dimension outlier spike suppression on trajectory prediction
+                    let spike_loss = compute_dimension_outlier_spike_loss(&z_pred, 3.5)?;
+                    // Orthogonality regularization on learned output affine transformation
+                    let ortho_loss = compute_orthogonality_loss(mamba_model.out_affine.weight())?;
+                    // Contractive loss for Lyapunov stability
+                    let contract_loss = compute_contractive_loss(&z_pred, &batch.z_prev, batch.z_prev2.as_ref(), 2.0)?;
 
                     let loss_step1 = (&traj_loss + (&aux_loss * 0.02)?)?;
                     let loss_step2 = (&loss_step1 + (&router_z_loss * config.lambda_z)?)?;
@@ -1083,9 +1138,18 @@ pub fn run_candle_training_pipeline_with_steering(
                     let loss_step6 = (&loss_step5 + (&distill_loss * config.lambda_distill)?)?;
                     let loss_step7 = (&loss_step6 + (&soup_deficit * config.lambda_soup_deficit)?)?;
                     let loss_step8 = (&loss_step7 + (&mfp_loss * 0.05)?)?;
-                    let total_loss = (&loss_step8 + &halt_penalty)?;
+                    let loss_step9 = (&loss_step8 + (&spike_loss * 0.01)?)?;
+                    let loss_step10 = (&loss_step9 + (&ortho_loss * 0.001)?)?;
+                    let loss_step11 = (&loss_step10 + (&contract_loss * 0.01)?)?;
+                    let raw_total_loss = (&loss_step11 + &halt_penalty)?;
+                    let total_loss = soft_cap_loss(&raw_total_loss, 50.0)?;
 
                     let total_loss_val = total_loss.to_scalar::<f32>()?;
+                    if !total_loss_val.is_finite() {
+                        tracing::warn!("[!] Non-finite Mamba batch loss encountered ({:?}) at epoch {} batch {}, skipping update", total_loss_val, epoch, batch_idx);
+                        continue;
+                    }
+
                     let aux_val = aux_loss.to_scalar::<f32>()?;
                     let flow_val = flow_loss.to_scalar::<f32>()?;
                     let z_val = router_z_loss.to_scalar::<f32>()?;
@@ -1106,9 +1170,14 @@ pub fn run_candle_training_pipeline_with_steering(
                         for var in mamba_varmap.all_vars() {
                             let t = var.as_tensor();
                             if let Some(g) = batch_grads.get(t) {
-                                match mamba_accum_grads.get_mut(&t.id()) {
-                                    Some(acc) => *acc = (acc as &Tensor + g)?,
-                                    None => { mamba_accum_grads.insert(t.id(), g.clone()); }
+                                let is_finite = g.sqr()?.sum_all()?.to_scalar::<f32>()?.is_finite();
+                                if is_finite {
+                                    match mamba_accum_grads.get_mut(&t.id()) {
+                                        Some(acc) => *acc = (acc as &Tensor + g)?,
+                                        None => { mamba_accum_grads.insert(t.id(), g.clone()); }
+                                    }
+                                } else {
+                                    tracing::warn!("[!] Non-finite gradient in accumulation for Mamba, skipping tensor");
                                 }
                             }
                         }
@@ -1128,29 +1197,37 @@ pub fn run_candle_training_pipeline_with_steering(
                                 }
                             }
 
-                            let _norm = clip_grad_norm_varmap(&mamba_varmap, &mut final_grads, config.max_grad_norm)?;
-                            mamba_opt.step(&final_grads)?;
-                            let current_lr = mamba_scheduler.step();
-                            mamba_opt.set_learning_rate(current_lr);
-                            mamba_ema.update(&mamba_varmap)?;
+                            let norm = clip_grad_norm_varmap(&mamba_varmap, &mut final_grads, config.max_grad_norm)?;
+                            if norm > 1e-12 {
+                                mamba_opt.step(&final_grads)?;
+                                let current_lr = mamba_scheduler.step();
+                                mamba_opt.set_learning_rate(current_lr);
+                                mamba_ema.update(&mamba_varmap)?;
+                            } else {
+                                tracing::warn!("[!] Skipping Mamba optimizer step due to zero or sanitized gradient norm");
+                            }
                         }
                     } else {
                         let mut grads = total_loss.backward()?;
-                        let _norm = clip_grad_norm_varmap(&mamba_varmap, &mut grads, config.max_grad_norm)?;
+                        let norm = clip_grad_norm_varmap(&mamba_varmap, &mut grads, config.max_grad_norm)?;
 
-                        for var in mamba_varmap.all_vars() {
-                            let shape = var.as_tensor().dims();
-                            if shape.len() == 2 && shape[0] == 128 && shape[1] == 16 {
-                                if let Some(g) = grads.get(var.as_tensor()) {
-                                    grads.insert(var.as_tensor(), (g * 0.1)?);
+                        if norm > 1e-12 {
+                            for var in mamba_varmap.all_vars() {
+                                let shape = var.as_tensor().dims();
+                                if shape.len() == 2 && shape[0] == 128 && shape[1] == 16 {
+                                    if let Some(g) = grads.get(var.as_tensor()) {
+                                        grads.insert(var.as_tensor(), (g * 0.1)?);
+                                    }
                                 }
                             }
-                        }
 
-                        mamba_opt.step(&grads)?;
-                        let current_lr = mamba_scheduler.step();
-                        mamba_opt.set_learning_rate(current_lr);
-                        mamba_ema.update(&mamba_varmap)?;
+                            mamba_opt.step(&grads)?;
+                            let current_lr = mamba_scheduler.step();
+                            mamba_opt.set_learning_rate(current_lr);
+                            mamba_ema.update(&mamba_varmap)?;
+                        } else {
+                            tracing::warn!("[!] Skipping Mamba optimizer step due to zero or sanitized gradient norm");
+                        }
                     }
 
                     total_processed_samples += config.batch_size;

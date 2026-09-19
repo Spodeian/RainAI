@@ -339,6 +339,21 @@ impl CandleManifestDataset {
             target_foas.extend_from_slice(&foa);
         }
 
+        // Layer 0 Hardening: sanitize all raw float arrays to guarantee zero NaNs/Infs enter tensors
+        for val in &mut audio_feats {
+            if !val.is_finite() { *val = 0.0; }
+        }
+        for val in &mut cond_vecs {
+            if !val.is_finite() { *val = 0.0; }
+        }
+        for val in &mut target_bands {
+            if !val.is_finite() { *val = 0.1; }
+            *val = val.clamp(0.0, 20.0);
+        }
+        for val in &mut target_foas {
+            if !val.is_finite() { *val = 0.0; }
+        }
+
         let audio_features = Tensor::from_vec(audio_feats, (batch_size, LATENT_DIM), device)?;
         let mut conditioning = Tensor::from_vec(cond_vecs, (batch_size, CONDITION_DIM), device)?;
 

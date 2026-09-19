@@ -9,6 +9,15 @@ use candle_nn::{linear, Linear, Module, VarBuilder};
 
 use super::*;
 
+/// Numerically stable softplus: softplus(x) = max(x, 0) + ln(1 + exp(-|x|))
+/// Overflow-free for all x in (-inf, inf).
+pub fn candle_softplus(x: &Tensor) -> Result<Tensor> {
+    let relu = x.relu()?;
+    let neg_abs = (x.abs()? * (-1.0f64))?;
+    let log1p = (neg_abs.exp()? + 1.0f64)?.log()?;
+    (&relu + &log1p).map_err(Into::into)
+}
+
 /// Continuous Spatial VAE for multi-channel acoustic and spectral latent projection.
 pub struct CandleSpatialVae {
     // Encoder: Audio spectral features [B, 64] -> Latent distribution mu, logvar
@@ -54,13 +63,14 @@ impl CandleSpatialVae {
         let h1 = self.enc_fc1.forward(audio_features)?.gelu_erf()?;
         let h2 = self.enc_fc2.forward(&h1)?.gelu_erf()?;
         let mu = self.enc_mu.forward(&h2)?;
-        let logvar = self.enc_logvar.forward(&h2)?;
+        let logvar = self.enc_logvar.forward(&h2)?.clamp(-12.0f32, 12.0f32)?;
         Ok((mu, logvar))
     }
 
     /// Reparameterization trick: $z = \mu + \epsilon \odot \exp(0.5 \log \sigma^2)$.
     pub fn reparameterize(&self, mu: &Tensor, logvar: &Tensor) -> Result<Tensor> {
-        let std = (logvar * 0.5)?.exp()?;
+        let logvar_clamped = logvar.clamp(-12.0f32, 12.0f32)?;
+        let std = (logvar_clamped * 0.5)?.exp()?;
         let eps = Tensor::randn(0.0f32, 1.0f32, mu.shape(), mu.device())?;
         let z = (mu + (&eps * &std)?)?;
         Ok(z)
@@ -71,8 +81,20 @@ impl CandleSpatialVae {
         let x = Tensor::cat(&[z, conditioning], 1)?;
         let h1 = self.dec_fc1.forward(&x)?.gelu_erf()?;
         let h2 = self.dec_fc2.forward(&h1)?.gelu_erf()?;
-        let bands = self.dec_bands.forward(&h2)?;
-        let foa = self.dec_foa.forward(&h2)?;
+
+        // Output Affine Alignment for bands: physically constrained non-negative band gains in [0, 20]
+        let raw_bands = self.dec_bands.forward(&h2)?;
+        let bands = (candle_softplus(&raw_bands)? + 1e-4f64)?.clamp(0.0f32, 20.0f32)?;
+
+        // Output Affine Alignment for FOA: enforcing acoustic physical energy constraint W >= sqrt(X^2 + Y^2 + Z^2)
+        let raw_foa = self.dec_foa.forward(&h2)?;
+        let w_raw = raw_foa.narrow(1, 0, 1)?;
+        let u_raw = raw_foa.narrow(1, 1, 3)?;
+        let w = (candle_softplus(&w_raw)? + 1e-4f64)?.clamp(1e-4f32, 10.0f32)?;
+        let u_dir = u_raw.tanh()?;
+        let xyz = u_dir.broadcast_mul(&w)?;
+        let foa = Tensor::cat(&[&w, &xyz], 1)?;
+
         Ok((bands, foa))
     }
 
@@ -85,9 +107,33 @@ impl CandleSpatialVae {
     }
 }
 
+/// Root Mean Square Normalization (RMSNorm) with learned gain gamma.
+/// RMSNorm(x) = (x / sqrt(mean(x^2) + eps)) * gamma
+pub struct CandleRMSNorm {
+    pub weight: Tensor,
+    pub eps: f64,
+}
+
+impl CandleRMSNorm {
+    pub fn new(dim: usize, eps: f64, vs: VarBuilder) -> Result<Self> {
+        let weight = vs.get((dim,), "weight")
+            .unwrap_or_else(|_| Tensor::ones((dim,), DType::F32, vs.device()).unwrap());
+        Ok(Self { weight, eps })
+    }
+
+    pub fn forward(&self, x: &Tensor) -> Result<Tensor> {
+        let sq = x.sqr()?;
+        let mean_sq = sq.mean_keepdim(candle_core::D::Minus1)?;
+        let rsqrt = (mean_sq + self.eps)?.sqrt()?;
+        let normed = x.broadcast_div(&rsqrt)?;
+        let out = normed.broadcast_mul(&self.weight)?;
+        Ok(out)
+    }
+}
+
 /// Trainable continuous affine latent alignment layer: z_align = W * z + b
 pub struct CandleAffineAlignment {
-    proj: Linear,
+    pub proj: Linear,
 }
 
 impl CandleAffineAlignment {
@@ -98,6 +144,10 @@ impl CandleAffineAlignment {
 
     pub fn forward(&self, z: &Tensor) -> Result<Tensor> {
         Ok(self.proj.forward(z)?)
+    }
+
+    pub fn weight(&self) -> &Tensor {
+        self.proj.weight()
     }
 }
 
@@ -241,6 +291,7 @@ pub struct CandleLatentAttention {
     pub k_up: Linear,
     pub v_up: Linear,
     pub out_proj: Linear,
+    pub kv_norm: CandleRMSNorm,
     pub scale: f64,
 }
 
@@ -253,6 +304,7 @@ impl CandleLatentAttention {
         let k_up = linear(d_compress, d_model, vs.pp("k_up"))?;
         let v_up = linear(d_compress, d_model, vs.pp("v_up"))?;
         let out_proj = linear(d_model, d_model, vs.pp("out_proj"))?;
+        let kv_norm = CandleRMSNorm::new(d_compress, 1e-6, vs.pp("kv_norm"))?;
         let scale = 1.0 / ((d_model / num_heads) as f64).sqrt();
 
         Ok(Self {
@@ -264,6 +316,7 @@ impl CandleLatentAttention {
             k_up,
             v_up,
             out_proj,
+            kv_norm,
             scale,
         })
     }
@@ -271,10 +324,11 @@ impl CandleLatentAttention {
     pub fn forward(&self, x: &Tensor) -> Result<Tensor> {
         let q = self.q_proj.forward(x)?;
         let c_kv = self.kv_down.forward(x)?;
-        let k = self.k_up.forward(&c_kv)?;
-        let v = self.v_up.forward(&c_kv)?;
+        let c_kv_normed = self.kv_norm.forward(&c_kv)?;
+        let k = self.k_up.forward(&c_kv_normed)?;
+        let v = self.v_up.forward(&c_kv_normed)?;
 
-        let scores = ((&q * &k)? * self.scale)?;
+        let scores = ((&q * &k)? * self.scale)?.clamp(-30.0f32, 30.0f32)?;
         let weights = candle_nn::ops::softmax(&scores, 1)?;
         let context = (&weights * &v)?;
         let out = self.out_proj.forward(&context)?;
@@ -284,7 +338,8 @@ impl CandleLatentAttention {
 }
 
 /// Mamba-2 Mixture of Experts (MoE) Trajectory Model with Top-K Gating,
-/// DeepSeek Invariant Shared Base Expert, and Router-Derived Dynamic Dense Soup.
+/// DeepSeek Invariant Shared Base Expert, Router-Derived Dynamic Dense Soup,
+/// and Output Affine Alignment for Latent Trajectories.
 pub struct CandleMamba2MoE {
     pub in_proj: Linear,
     pub router: Linear,
@@ -295,6 +350,7 @@ pub struct CandleMamba2MoE {
     pub traj_head: Linear,
     pub traj_head_t2: Linear,
     pub traj_head_t3: Linear,
+    pub out_affine: CandleAffineAlignment,
 }
 
 impl CandleMamba2MoE {
@@ -316,6 +372,7 @@ impl CandleMamba2MoE {
         let traj_head = linear(d_model, LATENT_DIM, vs.pp("traj_head"))?;
         let traj_head_t2 = linear(d_model, LATENT_DIM, vs.pp("traj_head_t2"))?;
         let traj_head_t3 = linear(d_model, LATENT_DIM, vs.pp("traj_head_t3"))?;
+        let out_affine = CandleAffineAlignment::new(LATENT_DIM, vs.pp("out_affine"))?;
 
         Ok(Self {
             in_proj,
@@ -327,10 +384,12 @@ impl CandleMamba2MoE {
             traj_head,
             traj_head_t2,
             traj_head_t3,
+            out_affine,
         })
     }
 
-    /// Forward pass with smooth softmax routing, DeepSeek shared base expert, and load-balancing probabilities.
+    /// Forward pass with smooth softmax routing, DeepSeek shared base expert, load-balancing probabilities,
+    /// and output affine alignment to canonical VAE latent coordinates.
     pub fn forward(
         &self,
         z_prev: &Tensor,
@@ -374,9 +433,10 @@ impl CandleMamba2MoE {
         blended_out = (&base_out + &blended_out)?;
         blended_state = (&base_h_next + &blended_state)?;
 
-        // Feature fusion and final trajectory projection
+        // Feature fusion and final trajectory projection with output affine alignment
         let fused = self.fusion.forward(&blended_out)?.gelu_erf()?;
-        let z_pred = self.traj_head.forward(&fused)?;
+        let z_raw = self.traj_head.forward(&fused)?;
+        let z_pred = self.out_affine.forward(&z_raw)?;
 
         Ok((z_pred, blended_state, router_probs))
     }
@@ -416,9 +476,9 @@ impl CandleMamba2MoE {
 
     /// Multi-Frame Prediction: predicts trajectories for t+1, t+2, and t+3.
     pub fn predict_multi_frame(&self, fused: &Tensor) -> Result<(Tensor, Tensor, Tensor)> {
-        let z1 = self.traj_head.forward(fused)?;
-        let z2 = self.traj_head_t2.forward(fused)?;
-        let z3 = self.traj_head_t3.forward(fused)?;
+        let z1 = self.out_affine.forward(&self.traj_head.forward(fused)?)?;
+        let z2 = self.out_affine.forward(&self.traj_head_t2.forward(fused)?)?;
+        let z3 = self.out_affine.forward(&self.traj_head_t3.forward(fused)?)?;
         Ok((z1, z2, z3))
     }
 
@@ -519,7 +579,9 @@ impl CandleMamba2MoE {
         let smooth_weights = candle_nn::ops::softmax(&scaled, 1)?;
 
         // Entropy-based effective expert count: exp(H) = exp(-sum p*log(p))
-        let log_w = (smooth_weights.log()? * -1.0)?;
+        // Clamping smooth_weights to [1e-8, 1.0] before log guarantees 0 * log(0) = NaN cannot occur
+        let safe_weights = smooth_weights.clamp(1e-8f32, 1.0f32)?;
+        let log_w = (safe_weights.log()? * -1.0)?;
         let entropy = (&smooth_weights * &log_w)?.sum(1)?;       // [B]
         let eff_count = entropy.exp()?;                           // exp(H), in [1, N]
         let mean_eff = eff_count.mean_all()?;
@@ -584,7 +646,8 @@ impl CandleMamba2MoE {
         blended_state = (&base_h_next + &blended_state)?;
 
         let fused = self.fusion.forward(&blended_out)?.gelu_erf()?;
-        let z_pred = self.traj_head.forward(&fused)?;
+        let z_raw = self.traj_head.forward(&fused)?;
+        let z_pred = self.out_affine.forward(&z_raw)?;
 
         Ok((z_pred, blended_state, router_probs, active_mask, mean_eff, router_logits))
     }
@@ -660,7 +723,7 @@ impl CandleThinkingBlock {
 
             z_current = (&z_current + &delta)?;
 
-            let step_norm = delta.sqr()?.sum_all()?.sqrt()?.to_scalar::<f32>()?;
+            let step_norm = delta.sqr()?.sum_all()?.relu()?.sqrt()?.to_scalar::<f32>()?;
             if step_norm < eps_halt {
                 break;
             }
@@ -730,8 +793,8 @@ impl CandleMambaSSDBlock {
         let b_t = self.b_proj.forward(&u_act)?; // [B, D_state]
         let c_t = self.c_proj.forward(&u_act)?; // [B, D_state]
 
-        // State decay: decay = exp(-exp(a_log))
-        let decay = (self.a_log.exp()? * -1.0)?.exp()?; // [D_model, D_state]
+        // State decay: decay = exp(-exp(a_log)) clamped to prevent gradient blowup
+        let decay = (self.a_log.clamp(-10.0f32, 4.0f32)?.exp()? * -1.0)?.exp()?; // [D_model, D_state]
         let h_decayed = h_prev.broadcast_mul(&decay.unsqueeze(0)?)?; // [B, D_model, D_state]
 
         let u_exp = u_act.unsqueeze(2)?; // [B, D_model, 1]

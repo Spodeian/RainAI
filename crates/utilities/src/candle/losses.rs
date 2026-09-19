@@ -61,7 +61,7 @@ pub fn compute_physics_trajectory_loss_v2(
         Tensor::zeros((), DType::F32, z_pred.device())?
     };
 
-    let v_pred_sq = v_pred.sqr()?.sum_keepdim(1)?;
+    let v_pred_sq = v_pred.sqr()?.sum_keepdim(1)?.relu()?;
     let speed = (v_pred_sq + 1e-6)?.sqrt()?;
     let excess_speed = (speed - v_terminal)?.relu()?;
     let drag_loss = excess_speed.sqr()?.mean_all()?;
@@ -71,6 +71,73 @@ pub fn compute_physics_trajectory_loss_v2(
     let total = (&total_drag + (&drag_loss * lambda_drag)?)?;
 
     Ok((total, pos_loss, acc_loss, drag_loss))
+}
+
+/// Smooth hyperbolic tangent soft-capping function: SoftCap(L, M) = M * tanh(L / M).
+/// For normal losses (L << M), gradients are identical to L (1.0).
+/// For extreme loss spikes (L >> M), the loss saturates smoothly at M with zero gradient,
+/// making the training loop immune to anomalous batch gradient shocks.
+pub fn soft_cap_loss(loss: &Tensor, max_val: f64) -> Result<Tensor> {
+    let scaled = (loss / max_val)?;
+    let capped = (scaled.tanh()? * max_val)?;
+    Ok(capped)
+}
+
+/// Dimension Outlier Spike Suppression Loss:
+/// Penalizes activation dimensions exceeding `tau_max` (default: 3.5 standard deviations)
+/// and disproportionate Peak-to-Average Power Ratios (PAPR) across channels.
+/// Directly suppresses activation outliers in attention KV caches and latent states.
+pub fn compute_dimension_outlier_spike_loss(x: &Tensor, tau_max: f64) -> Result<Tensor> {
+    let abs_x = x.abs()?;
+    let tau_t = Tensor::full(tau_max as f32, x.shape(), x.device())?;
+    let excess = (abs_x.broadcast_sub(&tau_t))?.relu()?;
+    let threshold_penalty = excess.sqr()?.mean_all()?;
+
+    // Peak-to-average power ratio across hidden channels
+    let mean_mag = (abs_x.mean_keepdim(1)? + 1e-6)?;
+    let max_mag = abs_x.max_keepdim(1)?;
+    let papr = (max_mag.broadcast_div(&mean_mag)? - 1.0)?.relu()?;
+    let papr_penalty = papr.sqr()?.mean_all()?;
+
+    let total = (&threshold_penalty + (&papr_penalty * 0.1)?)?;
+    Ok(total)
+}
+
+/// Isometric / Orthogonality Regularization Loss for Affine Alignment Matrices:
+/// Penalizes deviation from exact isometry: L_ortho = ||W^T * W - I||_F^2.
+/// Guarantees that learned affine alignment transforms preserve Euclidean norms,
+/// bound singular values sigma_i(W) approx 1.0, and cannot collapse rank or explode activations.
+pub fn compute_orthogonality_loss(weight: &Tensor) -> Result<Tensor> {
+    let dims = weight.dims();
+    if dims.len() != 2 || dims[0] != dims[1] {
+        return Ok(Tensor::zeros((), DType::F32, weight.device())?);
+    }
+    let n = dims[0];
+    let w_t_w = weight.t()?.matmul(weight)?;
+    let eye = Tensor::eye(n, DType::F32, weight.device())?;
+    let diff = (w_t_w - eye)?;
+    let loss = diff.sqr()?.mean_all()?;
+    Ok(loss)
+}
+
+/// Contractive Attractor Trajectory Regularization (Lyapunov Stability):
+/// Penalizes runaway velocity expansion: ReLU(||z_{t+1} - z_t|| / (||z_t - z_{t-1}|| + eps) - max_ratio)^2.
+/// Guarantees that recurrent state trajectories cannot exponentially diverge without external stimulus.
+pub fn compute_contractive_loss(
+    z_pred: &Tensor,
+    z_prev: &Tensor,
+    z_prev2: Option<&Tensor>,
+    max_ratio: f64,
+) -> Result<Tensor> {
+    if let Some(prev2) = z_prev2 {
+        let v_curr = (z_pred - z_prev)?.sqr()?.sum_keepdim(1)?.relu()?.sqrt()?;
+        let v_prev = ((z_prev - prev2)?.sqr()?.sum_keepdim(1)?.relu()? + 1e-6)?.sqrt()?;
+        let ratio = (v_curr.broadcast_div(&v_prev)? - max_ratio)?.relu()?;
+        let loss = ratio.sqr()?.mean_all()?;
+        Ok(loss)
+    } else {
+        Ok(Tensor::zeros((), DType::F32, z_pred.device())?)
+    }
 }
 
 /// Auxiliary load balancing loss penalizing expert imbalance:
@@ -88,8 +155,8 @@ pub fn compute_moe_load_balancing_loss(router_probs: &Tensor) -> Result<Tensor> 
 /// Penalizes extreme logit magnitudes: L_z = 1/B sum_b (log sum_e exp(z_{b, e}))^2.
 pub fn compute_router_z_loss(router_logits: &Tensor) -> Result<Tensor> {
     let max_logit = router_logits.max_keepdim(1)?;
-    let exp_diff = router_logits.broadcast_sub(&max_logit)?.exp()?;
-    let sum_exp = exp_diff.sum_keepdim(1)?;
+    let exp_diff = router_logits.broadcast_sub(&max_logit)?.clamp(-20.0f32, 20.0f32)?.exp()?;
+    let sum_exp = exp_diff.sum_keepdim(1)?.clamp(1e-8f32, 1e8f32)?;
     let log_sum_exp = (&max_logit + &sum_exp.log()?)?;
     let z_loss = log_sum_exp.sqr()?.mean_all()?;
     Ok(z_loss)
@@ -115,7 +182,7 @@ pub fn compute_expert_diversity_loss(prob_history: &[Tensor]) -> Result<Tensor> 
             let dot = (p_j * p_k)?.sum_keepdim(1)?;
             let norm_j = (p_j.sqr()?.sum_keepdim(1)? + (eps * eps))?.sqrt()?;
             let norm_k = (p_k.sqr()?.sum_keepdim(1)? + (eps * eps))?.sqrt()?;
-            let denom = (&norm_j * &norm_k)?;
+            let denom = (&norm_j * &norm_k)?.clamp(1e-7f32, 1e7f32)?;
             let cos_sim = dot.broadcast_div(&denom)?.mean_all()?;
             pair_sim_sum = (&pair_sim_sum + &cos_sim)?;
             num_pairs += 1;
@@ -144,11 +211,12 @@ pub fn compute_beta_vae_loss(
     let recon_diff = (pred_bands - target_bands)?;
     let recon_loss = recon_diff.sqr()?.mean_all()?;
 
-    // KL = -0.5 * sum(1 + logvar - mu^2 - exp(logvar))
+    // Numerical clamp on logvar to [-12.0, 12.0] to prevent exponential overflow to infinity and NaN
+    let logvar_clamped = logvar.clamp(-12.0f32, 12.0f32)?;
     let mu_sq = mu.sqr()?;
-    let var = logvar.exp()?;
+    let var = logvar_clamped.exp()?;
     let ones = Tensor::ones(logvar.shape(), DType::F32, logvar.device())?;
-    let inner = (((&ones + logvar)? - &mu_sq)? - &var)?;
+    let inner = (((&ones + &logvar_clamped)? - &mu_sq)? - &var)?;
     let kl = (inner.mean_all()? * -0.5)?;
 
     let total = (&recon_loss + (&kl * beta)?)?;

@@ -212,8 +212,8 @@ impl MultiResolutionStftLoss {
 
         // Spectral envelope convergence: sqrt(diff_sq) / sqrt(target_sq + eps)
         let eps_f64 = eps.max(1e-6) as f64;
-        let num = diff_sq.sqrt()?;
-        let den = (target_sq + eps_f64)?.sqrt()?;
+        let num = diff_sq.relu()?.sqrt()?;
+        let den = (target_sq.relu()? + eps_f64)?.sqrt()?.clamp(1e-6f32, 1e8f32)?;
         let l_sc = (num / den)?;
 
         // Log-energy band distance: mean | log(|b| + eps) - log(|\hat{b}| + eps) |
@@ -326,9 +326,10 @@ pub fn compute_acoustic_intensity_and_doa_loss(
     let n_pred = i_pred.broadcast_div(&norm_pred)?;
     let n_target = i_target.broadcast_div(&norm_target)?;
 
-    // Cosine alignment: dot product [B, 1]
+    // Cosine alignment: dot product [B, 1] clamped to [-1.0, 1.0]
     let dot = (&n_pred * &n_target)?.sum_keepdim(1)?;
-    let angular_err = (1.0 - dot)?;
+    let dot_clamped = dot.clamp(-1.0f32, 1.0f32)?;
+    let angular_err = (1.0 - dot_clamped)?;
 
     let l_doa = huber_loss(&angular_err, delta)?;
 
@@ -359,8 +360,9 @@ pub fn compute_soundfield_diffuseness_loss(
         let e_w = w.sqr()?;
         let e_u = (u.sqr()?.sum_keepdim(1)? * (1.0 / 3.0))?;
         let e_tot = (&e_w + &e_u)?;
+        let e_tot_safe = (e_tot + eps)?.clamp(1e-7f32, 1e7f32)?;
 
-        let ratio = i_norm.broadcast_div(&(e_tot + eps)?)?;
+        let ratio = i_norm.broadcast_div(&e_tot_safe)?;
         let psi = (1.0 - ratio)?.clamp(0.0, 1.0)?;
         Ok(psi)
     };

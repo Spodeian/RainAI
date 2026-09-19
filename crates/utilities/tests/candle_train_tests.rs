@@ -1,7 +1,7 @@
 //! Automated Integration Tests for Native Rust Candle Training Engine.
 
 use candle_core::{DType, Device, Tensor};
-use candle_nn::{VarBuilder, VarMap};
+use candle_nn::{Module, VarBuilder, VarMap};
 use utilities::candle_train::{
     compute_beta_vae_loss, compute_expert_diversity_loss, compute_flow_matching_loss,
     compute_hierarchical_multi_res_loss, compute_moe_load_balancing_loss,
@@ -938,4 +938,159 @@ fn test_autopilot_dense_soup_tracker() {
     }
     assert!(current < boosted, "Low soup deficit must decay lambda_soup towards base");
 }
+
+#[test]
+fn test_nan_hardening_extreme_inputs() {
+    let device = Device::Cpu;
+    let pred_bands = Tensor::new(&[[1e-12f32; 16]], &device).unwrap();
+    let target_bands = Tensor::new(&[[100.0f32; 16]], &device).unwrap();
+    let mu = Tensor::new(&[[1e5f32; LATENT_DIM]], &device).unwrap();
+    // Test with extreme logvar values (+80 and -80) that would normally overflow exp()
+    let logvar_extreme = Tensor::new(&[[80.0f32; LATENT_DIM]], &device).unwrap();
+
+    let (loss, recon, kl) = compute_beta_vae_loss(&pred_bands, &target_bands, &mu, &logvar_extreme, 0.01).unwrap();
+    let loss_val = loss.to_scalar::<f32>().unwrap();
+    let recon_val = recon.to_scalar::<f32>().unwrap();
+    let kl_val = kl.to_scalar::<f32>().unwrap();
+
+    assert!(loss_val.is_finite(), "Loss with extreme logvar must be finite: {}", loss_val);
+    assert!(recon_val.is_finite(), "Recon loss with extreme logvar must be finite: {}", recon_val);
+    assert!(kl_val.is_finite(), "KL divergence with extreme logvar must be finite: {}", kl_val);
+}
+
+#[test]
+fn test_route_smooth_softmax_zero_prob_stability() {
+    let device = Device::Cpu;
+    // Extreme router logits where some logits are -1000.0 (leading to 0 probability)
+    let logits = Tensor::new(&[[-1000.0f32, 0.0, 10.0, -500.0, 2.0, -100.0, 0.5, -20.0]], &device).unwrap();
+    let (probs, mask, eff_count) = CandleMamba2MoE::route_smooth_softmax(&logits, 0.1).unwrap();
+
+    let probs_vec = probs.flatten_all().unwrap().to_vec1::<f32>().unwrap();
+    let mask_vec = mask.flatten_all().unwrap().to_vec1::<f32>().unwrap();
+    let eff_count_val = eff_count.to_scalar::<f32>().unwrap();
+
+    assert!(eff_count_val.is_finite(), "Effective expert count must be finite: {}", eff_count_val);
+
+    for p in probs_vec {
+        assert!(p.is_finite(), "Router probability must be finite: {}", p);
+        assert!(p >= 0.0 && p <= 1.0, "Router probability must be in [0, 1]: {}", p);
+    }
+    for m in mask_vec {
+        assert!(m.is_finite(), "Router mask must be finite: {}", m);
+    }
+}
+
+#[test]
+fn test_dimension_outlier_spike_loss() {
+    let device = Device::Cpu;
+    // Tensor with normal activations (all <= 2.0)
+    let normal = Tensor::full(1.5f32, (2, 64), &device).unwrap();
+    let loss_normal = utilities::candle_train::compute_dimension_outlier_spike_loss(&normal, 3.5).unwrap();
+    let val_normal = loss_normal.to_scalar::<f32>().unwrap();
+    assert_eq!(val_normal, 0.0, "Normal activations below threshold must yield zero spike loss");
+
+    // Tensor with outlier spikes (e.g. 10.0 and 25.0)
+    let mut data = vec![1.0f32; 128];
+    data[5] = 10.0;
+    data[70] = 25.0;
+    let spiked = Tensor::from_vec(data, (2, 64), &device).unwrap();
+    let loss_spiked = utilities::candle_train::compute_dimension_outlier_spike_loss(&spiked, 3.5).unwrap();
+    let val_spiked = loss_spiked.to_scalar::<f32>().unwrap();
+    assert!(val_spiked > 0.0, "Spiked activations must produce positive spike penalty");
+    assert!(val_spiked.is_finite(), "Spike penalty must be finite: {}", val_spiked);
+}
+
+#[test]
+fn test_orthogonality_loss() {
+    let device = Device::Cpu;
+    // 4x4 Identity matrix (perfectly orthogonal)
+    let eye = Tensor::new(&[
+        [1.0f32, 0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ], &device).unwrap();
+
+    let loss_eye = utilities::candle_train::compute_orthogonality_loss(&eye).unwrap();
+    let val_eye = loss_eye.to_scalar::<f32>().unwrap();
+    assert!(val_eye.abs() < 1e-6, "Identity matrix must have zero orthogonality loss");
+
+    // Non-orthogonal matrix with collapsed singular values
+    let non_ortho = Tensor::full(2.0f32, (4, 4), &device).unwrap();
+    let loss_non = utilities::candle_train::compute_orthogonality_loss(&non_ortho).unwrap();
+    let val_non = loss_non.to_scalar::<f32>().unwrap();
+    assert!(val_non > 1.0, "Non-orthogonal matrix must have high orthogonality loss");
+}
+
+#[test]
+fn test_contractive_loss() {
+    let device = Device::Cpu;
+    let z_pred = Tensor::full(1.0f32, (2, 4), &device).unwrap();
+    let z_prev = Tensor::full(0.9f32, (2, 4), &device).unwrap();
+    let z_prev2 = Tensor::full(0.8f32, (2, 4), &device).unwrap();
+
+    // Constant velocity: ratio is 1.0, below max_ratio 2.0 -> loss should be 0
+    let loss = utilities::candle_train::compute_contractive_loss(&z_pred, &z_prev, Some(&z_prev2), 2.0).unwrap();
+    let val = loss.to_scalar::<f32>().unwrap();
+    assert_eq!(val, 0.0, "Constant velocity trajectory must yield 0 contractive loss");
+
+    // Diverging velocity: previous velocity 0.001, current velocity 10.0 -> ratio >> 2.0
+    let z_prev_slow = Tensor::full(0.999f32, (2, 4), &device).unwrap();
+    let z_prev2_slow = Tensor::full(0.998f32, (2, 4), &device).unwrap();
+    let z_pred_fast = Tensor::full(10.0f32, (2, 4), &device).unwrap();
+    let loss_diverge = utilities::candle_train::compute_contractive_loss(&z_pred_fast, &z_prev_slow, Some(&z_prev2_slow), 2.0).unwrap();
+    let val_diverge = loss_diverge.to_scalar::<f32>().unwrap();
+    assert!(val_diverge > 0.0, "Diverging trajectory must yield positive contractive loss");
+}
+
+#[test]
+fn test_soft_cap_loss() {
+    let device = Device::Cpu;
+    let small_loss = Tensor::new(0.5f32, &device).unwrap();
+    let capped_small = utilities::candle_train::soft_cap_loss(&small_loss, 50.0).unwrap();
+    let val_small = capped_small.to_scalar::<f32>().unwrap();
+    assert!((val_small - 0.5).abs() < 0.01, "Small loss should remain nearly unaffected by soft-capping");
+
+    let extreme_loss = Tensor::new(100000.0f32, &device).unwrap();
+    let capped_extreme = utilities::candle_train::soft_cap_loss(&extreme_loss, 50.0).unwrap();
+    let val_extreme = capped_extreme.to_scalar::<f32>().unwrap();
+    assert!(val_extreme <= 50.0, "Extreme loss must be capped at or below max_val");
+    assert!(val_extreme.is_finite(), "Capped loss must be finite");
+}
+
+#[test]
+fn test_clip_grad_norm_varmap_nan_sanitization() {
+    let device = Device::Cpu;
+    let varmap = VarMap::new();
+    let vs = VarBuilder::from_varmap(&varmap, DType::F32, &device);
+    let l = candle_nn::linear(4, 4, vs).unwrap();
+
+    let dummy_x = Tensor::zeros((2, 4), DType::F32, &device).unwrap();
+    let dummy_out = l.forward(&dummy_x).unwrap();
+    let dummy_loss = dummy_out.mean_all().unwrap();
+    let mut grads = dummy_loss.backward().unwrap();
+
+    // Inject NaN into one of the gradient tensors
+    for var in varmap.all_vars() {
+        let t = var.as_tensor();
+        let nan_tensor = Tensor::new(&[[f32::NAN, 0.0, 0.0, 0.0]; 4], &device).unwrap();
+        grads.insert(t, nan_tensor);
+        break;
+    }
+
+    let norm = utilities::candle_train::clip_grad_norm_varmap(&varmap, &mut grads, 1.0).unwrap();
+    assert_eq!(norm, 0.0, "Gradient norm must be 0.0 when non-finite gradients are detected");
+
+    // Verify all gradients in grads have been sanitized to zeros
+    for var in varmap.all_vars() {
+        let t = var.as_tensor();
+        if let Some(g) = grads.get(t) {
+            let vals = g.flatten_all().unwrap().to_vec1::<f32>().unwrap();
+            for v in vals {
+                assert_eq!(v, 0.0, "All gradients must be sanitized to zero");
+            }
+        }
+    }
+}
+
 
