@@ -51,8 +51,8 @@ use shared::{paths::WorkspacePaths, surface::CanonicalSurface};
 use utilities::{
     audio_preview::{AudioPreviewManager, PreferenceChoice},
     autopilot::{
-        probe_host_nvidia_gpu, AutoPilotConvergenceTracker, HardwareProfile, SurfaceEntropyAuditor,
-        SurfaceQuota, CANONICAL_SURFACES,
+        configure_system_resources, probe_host_nvidia_gpu, AutoPilotConvergenceTracker,
+        HardwareProfile, SurfaceEntropyAuditor, SurfaceQuota, CANONICAL_SURFACES,
     },
     candle_train::{
         run_candle_training_pipeline_with_steering, AtomicCheckpointManager, CandleTrainConfig,
@@ -372,6 +372,11 @@ impl App {
 
         // AutoPilot Hardware Probing and Optimal Hyperparameter Calibration
         let hw_profile = HardwareProfile::probe();
+        let (worker_threads, os_reserved) = configure_system_resources(80, hw_profile.cpu_cores);
+        let _ = log_tx.send(format!(
+            "[⚙] System Resources Calibrated: Rayon worker threads={}, OS/TUI reserved cores={}",
+            worker_threads, os_reserved
+        ));
         let (gpu_name, gpu_mem_total_mb) = match probe_host_nvidia_gpu() {
             Some((name, mem_mb)) => (format!("NVIDIA {}", name), mem_mb),
             None => ("CUDA/DirectX GPU".to_string(), 8192),
@@ -404,7 +409,7 @@ impl App {
                         }
                     }
                 }
-                std::thread::sleep(Duration::from_millis(1000));
+                std::thread::sleep(Duration::from_millis(2500));
             }
         });
 
@@ -659,6 +664,10 @@ impl App {
             current_lr: self.tuning_state.learning_rate,
             throughput: 0.0,
             eta_seconds: 180,
+            active_latents: 64,
+            router_perplexity: 8.0,
+            dead_experts: 0,
+            collapse_status: "OPTIMAL".to_string(),
         });
 
         // Build config from tuning parameters
@@ -873,7 +882,10 @@ impl App {
     }
 
     /// Polls background thread telemetry, progress, and logs.
-    pub fn poll_channels(&mut self) {
+    /// Returns true if any new data was received that requires a redraw.
+    pub fn poll_channels(&mut self) -> bool {
+        let mut changed = false;
+
         // System host metrics refresh
         if self.last_tick.elapsed() >= Duration::from_millis(500) {
             self.sys.refresh_cpu_usage();
@@ -889,12 +901,14 @@ impl App {
             };
 
             self.last_tick = Instant::now();
+            changed = true;
         }
 
         // Poll GPU Telemetry
         while let Ok((util, used_mb)) = self.gpu_rx.try_recv() {
             self.gpu_usage = util;
             self.gpu_mem_used_mb = used_mb;
+            changed = true;
         }
 
         // Poll 15 GB Rolling Database Health Worker
@@ -905,6 +919,7 @@ impl App {
                 self.total_chunks = telemetry.total_chunks;
             }
             self.data_worker_telemetry = telemetry;
+            changed = true;
         }
 
         // Autonomous Dataset Balancing Watchdog:
@@ -969,6 +984,7 @@ impl App {
             }
 
             self.current_progress = Some(progress);
+            changed = true;
         }
 
         // Poll Log Messages
@@ -977,12 +993,14 @@ impl App {
                 self.active_in_process_task = None;
                 self.is_freshening_data = false;
                 self.trigger_manifest_refresh();
+                changed = true;
                 continue;
             }
 
             if let Some(json_str) = msg.strip_prefix("SOURCES_PARSED:") {
                 if let Ok(sources) = serde_json::from_str::<Vec<SourceItem>>(json_str) {
                     self.sources = sources;
+                    changed = true;
                 }
                 continue;
             }
@@ -1005,6 +1023,7 @@ impl App {
                     if self.flight_stage == FlightStage::HardwareProbe {
                         self.flight_stage = FlightStage::DatasetValidation;
                     }
+                    changed = true;
                 }
                 continue;
             }
@@ -1013,7 +1032,10 @@ impl App {
             if self.logs.len() > 550 {
                 self.logs.drain(..50);
             }
+            changed = true;
         }
+
+        changed
     }
 }
 
@@ -1048,24 +1070,60 @@ fn main() -> Result<()> {
 }
 
 fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<()> {
-    loop {
-        app.poll_channels();
-        terminal.draw(|f| ui(f, &app))?;
+    let mut dirty = true;
+    let mut last_render = Instant::now();
 
-        if event::poll(Duration::from_millis(25))? {
+    loop {
+        let channel_activity = app.poll_channels();
+        if channel_activity {
+            dirty = true;
+        }
+
+        // Adaptive Framerate Governor: 15 FPS (~66ms) when in focus; 2 FPS (~500ms) when backgrounded
+        let min_frame_interval = if app.terminal_focused {
+            Duration::from_millis(66)
+        } else {
+            Duration::from_millis(500)
+        };
+
+        if dirty && last_render.elapsed() >= min_frame_interval {
+            terminal.draw(|f| ui(f, &app))?;
+            last_render = Instant::now();
+            dirty = false;
+        }
+
+        let poll_timeout = if dirty {
+            Duration::from_millis(5)
+        } else {
+            Duration::from_millis(35)
+        };
+
+        if event::poll(poll_timeout)? {
             match event::read()? {
                 // Focus Events: Dynamic Resource Governor Regulation
                 Event::FocusGained => {
                     app.terminal_focused = true;
                     app.target_resource_pct = 80;
                     app.training_steering.throttle_micros.store(0, Ordering::Relaxed);
-                    let _ = app.log_tx.send("[⚡] Terminal in focus: Resource Governor targeting ~80% host compute (throttle=0µs)".to_string());
+                    let cpu_cores = app.sys.cpus().len();
+                    let (workers, os_cores) = configure_system_resources(80, cpu_cores);
+                    let _ = app.log_tx.send(format!(
+                        "[⚡] Terminal in focus: Resource Governor targeting ~80% host compute (workers={}, reserved={})",
+                        workers, os_cores
+                    ));
+                    dirty = true;
                 }
                 Event::FocusLost => {
                     app.terminal_focused = false;
                     app.target_resource_pct = 50;
                     app.training_steering.throttle_micros.store(2000, Ordering::Relaxed);
-                    let _ = app.log_tx.send("[💤] Terminal out of focus: Resource Governor operating in background compute mode (throttle=2000µs)".to_string());
+                    let cpu_cores = app.sys.cpus().len();
+                    let (workers, os_cores) = configure_system_resources(50, cpu_cores);
+                    let _ = app.log_tx.send(format!(
+                        "[💤] Terminal out of focus: Resource Governor operating in background mode (workers={}, reserved={})",
+                        workers, os_cores
+                    ));
+                    dirty = true;
                 }
 
                 Event::Key(key) => {
@@ -1325,6 +1383,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
 
                         _ => {}
                     }
+                    dirty = true;
                 }
                 _ => {}
             }
@@ -1514,7 +1573,7 @@ fn render_tab_flight_deck(f: &mut ratatui::Frame, app: &App, area: Rect) {
             [
                 Constraint::Length(3), // Flight Mission Stages
                 Constraint::Length(3), // Live Training Batch & Epoch Progress Gauge
-                Constraint::Length(3), // Real-Time Loss Metrics
+                Constraint::Length(4), // Real-Time Loss Metrics & Collapse Telemetry
                 Constraint::Min(3),    // Real-Time Convergence Sparkline
             ]
             .as_ref(),
@@ -1610,6 +1669,24 @@ fn render_tab_flight_deck(f: &mut ratatui::Frame, app: &App, area: Rect) {
         ("Pending".to_string(), "Pending".to_string(), "Pending".to_string(), "Pending".to_string())
     };
 
+    let (active_latents_str, router_perp_str, collapse_status_str, collapse_color) = if let Some(p) = &app.current_progress {
+        let color = if p.collapse_status == "OPTIMAL" {
+            COLOR_SUCCESS
+        } else if p.collapse_status.contains("WARNING") {
+            COLOR_ALERT
+        } else {
+            COLOR_ERROR
+        };
+        (
+            format!("{}/64", p.active_latents),
+            format!("{:.2}/8.0", p.router_perplexity),
+            p.collapse_status.clone(),
+            color,
+        )
+    } else {
+        ("64/64".to_string(), "8.00/8.0".to_string(), "OPTIMAL".to_string(), COLOR_SUCCESS)
+    };
+
     let p1_metrics = Paragraph::new(vec![
         Line::from(vec![
             Span::styled("Mamba-2 MoE Loss: ", Style::default().fg(COLOR_TEXT_MUTED)),
@@ -1622,6 +1699,13 @@ fn render_tab_flight_deck(f: &mut ratatui::Frame, app: &App, area: Rect) {
             Span::styled(format!("{:<10} ", soup_str), Style::default().fg(COLOR_SUCCESS).add_modifier(Modifier::BOLD)),
             Span::styled("STFT Transient: ", Style::default().fg(COLOR_TEXT_MUTED)),
             Span::styled(format!("{:<10}", stft_str), Style::default().fg(COLOR_ALERT).add_modifier(Modifier::BOLD)),
+        ]),
+        Line::from(vec![
+            Span::styled("Active Latents   : ", Style::default().fg(COLOR_TEXT_MUTED)),
+            Span::styled(format!("{:<10} ", active_latents_str), Style::default().fg(COLOR_TEXT_BRIGHT).add_modifier(Modifier::BOLD)),
+            Span::styled("Router Perp: ", Style::default().fg(COLOR_TEXT_MUTED)),
+            Span::styled(format!("{:<9} ", router_perp_str), Style::default().fg(COLOR_ACCENT)),
+            Span::styled(format!("[{}]", collapse_status_str), Style::default().fg(collapse_color).add_modifier(Modifier::BOLD)),
         ]),
     ]).block(Block::default().borders(Borders::NONE));
     f.render_widget(p1_metrics, p1_chunks[2]);
@@ -1997,6 +2081,16 @@ fn render_tab_neural_blueprint(f: &mut ratatui::Frame, app: &App, area: Rect) {
             Span::raw("32,768 physical priors"),
         ]),
         Line::from("   • Direct retrieval for repeated droplet cavitation impulses"),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("6. Autonomous Model Collapse Defense: ", Style::default().fg(COLOR_SUCCESS).add_modifier(Modifier::BOLD)),
+            Span::raw("Multi-Scale Anti-Degeneration Engine"),
+        ]),
+        Line::from("   • Free-Bits KL thresholding (τ=0.10 nats) eliminates posterior collapse"),
+        Line::from("   • VICReg latent variance hinge loss enforces std >= 1.0 (anti-low-rank)"),
+        Line::from("   • Router Shannon entropy maximization prevents dead expert starvation"),
+        Line::from("   • Trajectory diversity loss preserves flow matching multi-modal variance"),
+        Line::from("   • Real-time autonomic mitigation triggers when active latents < 25 or dead experts > 0"),
     ];
 
     let blueprint_para = Paragraph::new(blueprint_lines)

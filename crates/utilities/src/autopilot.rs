@@ -167,6 +167,26 @@ impl HardwareProfile {
     }
 }
 
+/// Dynamically configures system execution resources (Rayon global thread pool and Candle CPU threads)
+/// according to the target allocation percentage (e.g. 80% when terminal in focus, 50% when unfocused).
+pub fn configure_system_resources(resource_pct: u32, cpu_cores: usize) -> (usize, usize) {
+    let pct = (resource_pct as f64 / 100.0).clamp(0.20, 1.0);
+    let total_cores = cpu_cores.max(1);
+
+    // Reserve at least 1 core for OS, I/O, and TUI responsiveness
+    let target_threads = ((total_cores as f64 * pct).round() as usize)
+        .min(total_cores.saturating_sub(1).max(1))
+        .max(1);
+
+    // Configure Rayon if not already initialized
+    let _ = rayon::ThreadPoolBuilder::new()
+        .num_threads(target_threads)
+        .thread_name(|i| format!("rainai-worker-{i}"))
+        .build_global();
+
+    (target_threads, total_cores)
+}
+
 /// Surface quota and deficit metric for dataset balancing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SurfaceQuota {

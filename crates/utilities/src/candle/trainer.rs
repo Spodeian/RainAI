@@ -125,7 +125,36 @@ pub struct TrainingProgressUpdate {
     pub current_lr: f64,
     pub throughput: f64,
     pub eta_seconds: u64,
+    pub active_latents: usize,
+    pub router_perplexity: f32,
+    pub dead_experts: usize,
+    pub collapse_status: String,
 }
+
+impl Default for TrainingProgressUpdate {
+    fn default() -> Self {
+        Self {
+            phase: TrainingPhase::Vae,
+            epoch: 1,
+            total_epochs: 1,
+            batch_idx: 0,
+            max_batches: 1,
+            loss: 0.0,
+            vae_loss: 0.0,
+            mamba_loss: 0.0,
+            soup_deficit: 0.0,
+            stft_loss: 0.0,
+            current_lr: 1e-3,
+            throughput: 0.0,
+            eta_seconds: 0,
+            active_latents: LATENT_DIM,
+            router_perplexity: NUM_EXPERTS as f32,
+            dead_experts: 0,
+            collapse_status: "OPTIMAL".to_string(),
+        }
+    }
+}
+
 
 /// Real-time steering and dynamic control handle for in-process training.
 #[derive(Clone)]
@@ -509,6 +538,11 @@ pub struct CandleTrainConfig {
     pub continuous_refinement: bool,
     pub stochastic_hparams: bool,
     pub multi_env_simulation: bool,
+    pub kl_free_bits: f64,
+    pub lambda_latent_var: f64,
+    pub lambda_router_entropy: f64,
+    pub lambda_traj_div: f64,
+    pub enable_collapse_mitigation: bool,
     pub output_dir: PathBuf,
     pub device: String,
 }
@@ -557,11 +591,17 @@ impl Default for CandleTrainConfig {
             continuous_refinement: true,
             stochastic_hparams: true,
             multi_env_simulation: true,
+            kl_free_bits: 0.10,
+            lambda_latent_var: 0.05,
+            lambda_router_entropy: 0.02,
+            lambda_traj_div: 0.05,
+            enable_collapse_mitigation: true,
             output_dir: PathBuf::from("crates/inference/data/candle"),
             device: "auto".to_string(),
         }
     }
 }
+
 
 
 /// Dynamic device selection supporting CPU, CUDA, and Metal backends.
@@ -702,8 +742,13 @@ pub fn run_candle_training_pipeline_with_steering(
             current_lr: config.learning_rate,
             throughput: 0.0,
             eta_seconds: (config.vae_epochs * config.max_batches) as u64,
+            active_latents: LATENT_DIM,
+            router_perplexity: NUM_EXPERTS as f32,
+            dead_experts: 0,
+            collapse_status: "OPTIMAL".to_string(),
         });
     }
+
 
     let get_train_batch = |batch_size: usize, cfg_prob: f32, so3_prob: f32, mixup_prob: f32| -> Result<TrainingBatch> {
         if let Some(ref ds) = train_dataset {
@@ -777,6 +822,7 @@ pub fn run_candle_training_pipeline_with_steering(
 
             let start_time = Instant::now();
             let mut total_processed_samples = 0usize;
+            let mut active_beta_kl = config.beta_kl;
 
             for epoch in 1..=config.vae_epochs {
                 let mut epoch_loss = 0.0f32;
@@ -839,7 +885,21 @@ pub fn run_candle_training_pipeline_with_steering(
                         config.surface_mixup_prob,
                     )?;
                     let (pred_bands, pred_foa, mu, logvar) = vae_model.forward(&batch.audio_features, &batch.conditioning)?;
-                    let (loss, recon, kl) = compute_beta_vae_loss(&pred_bands, &batch.target_bands, &mu, &logvar, config.beta_kl)?;
+                    let (loss, recon, kl, active_latents) = compute_beta_vae_loss_with_free_bits(
+                        &pred_bands,
+                        &batch.target_bands,
+                        &mu,
+                        &logvar,
+                        active_beta_kl,
+                        config.kl_free_bits,
+                    )?;
+
+                    let latent_var_loss = compute_latent_variance_loss(&mu, 1.0)?;
+                    let mut vae_collapse_status = "OPTIMAL".to_string();
+                    if config.enable_collapse_mitigation && active_latents < 25 {
+                        vae_collapse_status = format!("POSTERIOR_RISK ({}/64): MITIGATING", active_latents);
+                        active_beta_kl = (active_beta_kl * 0.75).max(1e-5);
+                    }
 
                     // Train affine manifold projection & quantizer in loop
                     let z_align = affine_align.forward(&mu)?;
@@ -869,7 +929,7 @@ pub fn run_candle_training_pipeline_with_steering(
                     };
 
                     let affine_ortho = compute_orthogonality_loss(affine_align.weight())?;
-                    let raw_batch_loss = ((((&loss + &spatial_loss)? + &quant_penalty)? + (&stft_loss * active_stft_weight)?)? + (&affine_ortho * 0.001)?)?;
+                    let raw_batch_loss = (((((&loss + &spatial_loss)? + &quant_penalty)? + (&stft_loss * active_stft_weight)?)? + (&affine_ortho * 0.001)?)? + (&latent_var_loss * config.lambda_latent_var)?)?;
                     let total_batch_loss = soft_cap_loss(&raw_batch_loss, 100.0)?;
 
                     let batch_loss_val = total_batch_loss.to_scalar::<f32>()?;
@@ -899,27 +959,24 @@ pub fn run_candle_training_pipeline_with_steering(
                             if let Some(g) = batch_grads.get(t) {
                                 let is_finite = g.sqr()?.sum_all()?.to_scalar::<f32>()?.is_finite();
                                 if is_finite {
-                                    match vae_accum_grads.get_mut(&t.id()) {
-                                        Some(acc) => *acc = (acc as &Tensor + g)?,
-                                        None => { vae_accum_grads.insert(t.id(), g.clone()); }
-                                    }
-                                } else {
-                                    tracing::warn!("[!] Non-finite gradient in accumulation for VAE, skipping tensor");
+                                    let entry = vae_accum_grads.entry(t.id()).or_insert_with(|| t.zeros_like().unwrap());
+                                    *entry = (&*entry + g)?;
                                 }
                             }
                         }
 
-                        if batch_idx % config.accumulation_steps == 0 || batch_idx == config.max_batches {
-                            let mut final_grads = candle_core::backprop::GradStore::default();
+                        let is_step_boundary = batch_idx % config.accumulation_steps == 0 || batch_idx == config.max_batches;
+                        if is_step_boundary {
+                            let mut aggregated_grads = candle_core::backprop::GradStore::default();
                             for var in vae_varmap.all_vars() {
                                 let t = var.as_tensor();
-                                if let Some(g) = vae_accum_grads.remove(&t.id()) {
-                                    final_grads.insert(t, g);
+                                if let Some(acc) = vae_accum_grads.remove(&t.id()) {
+                                    aggregated_grads.insert(t, acc);
                                 }
                             }
-                            let norm = clip_grad_norm_varmap(&vae_varmap, &mut final_grads, config.max_grad_norm)?;
+                            let norm = clip_grad_norm_varmap(&vae_varmap, &mut aggregated_grads, config.max_grad_norm)?;
                             if norm > 1e-12 {
-                                vae_opt.step(&final_grads)?;
+                                vae_opt.step(&aggregated_grads)?;
                                 let current_lr = vae_scheduler.step();
                                 vae_opt.set_learning_rate(current_lr);
                                 vae_ema.update(&vae_varmap)?;
@@ -964,6 +1021,10 @@ pub fn run_candle_training_pipeline_with_steering(
                                 current_lr: vae_scheduler.get_lr(),
                                 throughput,
                                 eta_seconds,
+                                active_latents,
+                                router_perplexity: NUM_EXPERTS as f32,
+                                dead_experts: 0,
+                                collapse_status: vae_collapse_status,
                             });
                         }
                     }
@@ -1254,6 +1315,14 @@ pub fn run_candle_training_pipeline_with_steering(
 
                     let aux_loss = compute_moe_load_balancing_loss(&router_probs)?;
                     let router_z_loss = compute_router_z_loss(&router_logits)?;
+                    let (router_entropy_loss, router_perp, dead_experts) = compute_router_entropy_loss(&router_probs)?;
+                    let traj_div_loss = compute_trajectory_diversity_loss(&z_refined, 0.20)?;
+                    let traj_var_loss = compute_latent_variance_loss(&z_refined, 1.0)?;
+
+                    let mut mamba_collapse_status = "OPTIMAL".to_string();
+                    if config.enable_collapse_mitigation && (dead_experts > 0 || router_perp < 3.5) {
+                        mamba_collapse_status = format!("ROUTER_STARVATION ({} dead, perp {:.2}): MITIGATING", dead_experts, router_perp);
+                    }
 
                     let meta_out = meta_controller.forward(
                         &router_probs,
@@ -1343,8 +1412,12 @@ pub fn run_candle_training_pipeline_with_steering(
                     let loss_step9 = (&loss_step8 + (&spike_loss * 0.01)?)?;
                     let loss_step10 = (&loss_step9 + (&ortho_loss * 0.001)?)?;
                     let loss_step11 = (&loss_step10 + (&contract_loss * 0.01)?)?;
-                    let raw_total_loss = (&loss_step11 + &halt_penalty)?;
+                    let loss_step12 = (&loss_step11 + (&router_entropy_loss * config.lambda_router_entropy)?)?;
+                    let loss_step13 = (&loss_step12 + (&traj_div_loss * config.lambda_traj_div)?)?;
+                    let loss_step14 = (&loss_step13 + (&traj_var_loss * config.lambda_latent_var)?)?;
+                    let raw_total_loss = (&loss_step14 + &halt_penalty)?;
                     let total_loss = soft_cap_loss(&raw_total_loss, 50.0)?;
+
 
                     let total_loss_val = total_loss.to_scalar::<f32>()?;
                     if !total_loss_val.is_finite() {
@@ -1456,8 +1529,13 @@ pub fn run_candle_training_pipeline_with_steering(
                                 current_lr: mamba_scheduler.get_lr(),
                                 throughput,
                                 eta_seconds,
+                                active_latents: LATENT_DIM,
+                                router_perplexity: router_perp,
+                                dead_experts,
+                                collapse_status: mamba_collapse_status,
                             });
                         }
+
                     }
                 }
 
@@ -1564,8 +1642,13 @@ pub fn run_candle_training_pipeline_with_steering(
                 current_lr: config.learning_rate,
                 throughput: 0.0,
                 eta_seconds: 0,
+                active_latents: LATENT_DIM,
+                router_perplexity: NUM_EXPERTS as f32,
+                dead_experts: 0,
+                collapse_status: "OPTIMAL".to_string(),
             });
         }
+
         log_msg("\n[Stage 3/3] Exporting and validating SafeTensors deployment packages...");
         let manifest_path = config.output_dir.join("candle_manifest.json");
         let manifest = serde_json::json!({

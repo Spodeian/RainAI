@@ -3,13 +3,14 @@
 use candle_core::{DType, Device, Tensor};
 use candle_nn::{Module, VarBuilder, VarMap};
 use utilities::candle_train::{
-    compute_beta_vae_loss, compute_expert_diversity_loss, compute_flow_matching_loss,
-    compute_hierarchical_multi_res_loss, compute_moe_load_balancing_loss,
-    compute_physics_trajectory_loss, generate_batch, run_candle_training_pipeline,
-    CandleAffineAlignment, CandleConsistencyHead, CandleInvasiveMetaController,
-    CandleJambaSelfAttention, CandleLatentAttention, CandleEngramBank, CandleLearnedQuantizer,
-    CandleMamba2MoE, CandleMambaSSDBlock,
-    CandleManifestDataset, CandleSpatialVae, CandleTrainConfig, TrainingPhase, LATENT_DIM,
+    compute_beta_vae_loss, compute_beta_vae_loss_with_free_bits, compute_expert_diversity_loss,
+    compute_flow_matching_loss, compute_hierarchical_multi_res_loss, compute_latent_variance_loss,
+    compute_moe_load_balancing_loss, compute_physics_trajectory_loss, compute_router_entropy_loss,
+    compute_trajectory_diversity_loss, generate_batch, run_candle_training_pipeline,
+    CandleAffineAlignment, CandleConsistencyHead, CandleEngramBank, CandleInvasiveMetaController,
+    CandleJambaSelfAttention, CandleLatentAttention, CandleLearnedQuantizer, CandleMamba2MoE,
+    CandleMambaSSDBlock, CandleManifestDataset, CandleSpatialVae, CandleTrainConfig,
+    TrainingPhase, LATENT_DIM,
 };
 
 
@@ -128,6 +129,7 @@ fn test_candle_pipeline_runner() {
         multi_env_simulation: false,
         output_dir: temp_dir.clone(),
         device: "cpu".to_string(),
+        ..Default::default()
     };
 
 
@@ -1300,5 +1302,121 @@ fn test_multi_environment_training_pipeline_execution() {
     let _ = std::fs::remove_dir_all(temp_dir);
 }
 
+#[test]
+fn test_free_bits_kl_prevents_posterior_collapse() {
+    let device = Device::Cpu;
+    let b = 4;
+    let d = 64;
 
+    // Synthetic predictions and targets
+    let pred_bands = Tensor::zeros((b, 16), DType::F32, &device).expect("pred_bands");
+    let target_bands = Tensor::ones((b, 16), DType::F32, &device).expect("target_bands");
 
+    // Case 1: High variance active latents
+    let mu_active = Tensor::randn(0.0f32, 1.0f32, (b, d), &device).expect("mu_active");
+    let logvar_active = Tensor::zeros((b, d), DType::F32, &device).expect("logvar_active");
+
+    let (loss_active, recon, kl_active, active_units) = compute_beta_vae_loss_with_free_bits(
+        &pred_bands,
+        &target_bands,
+        &mu_active,
+        &logvar_active,
+        0.05,
+        0.10, // tau_free = 0.10 nats
+    ).expect("compute_beta_vae_loss_with_free_bits failed");
+
+    assert!(loss_active.to_scalar::<f32>().is_ok());
+    assert!(recon.to_scalar::<f32>().is_ok());
+    assert!(kl_active.to_scalar::<f32>().expect("kl") > 0.0);
+    assert!(active_units > 0, "Active units should be positive for randn mu, got {}", active_units);
+
+    // Case 2: Degenerate collapsed mu (mu -> 0 for all batch samples)
+    let mu_collapsed = Tensor::zeros((b, d), DType::F32, &device).expect("mu_collapsed");
+    let logvar_collapsed = Tensor::zeros((b, d), DType::F32, &device).expect("logvar_collapsed");
+
+    let (_loss_coll, _recon, kl_coll, collapsed_units) = compute_beta_vae_loss_with_free_bits(
+        &pred_bands,
+        &target_bands,
+        &mu_collapsed,
+        &logvar_collapsed,
+        0.05,
+        0.10,
+    ).expect("compute_beta_vae_loss_with_free_bits failed");
+
+    assert_eq!(collapsed_units, 0, "Zero-variance mu must register 0 active units");
+    // Under free bits, KL is clamped to at least the free_bits threshold (0.10 nats)
+    let kl_coll_val = kl_coll.to_scalar::<f32>().expect("kl");
+    assert!((kl_coll_val - 0.10).abs() < 1e-4, "KL should be floored at free_bits (0.10), got {}", kl_coll_val);
+}
+
+#[test]
+fn test_latent_variance_hinge_loss() {
+    let device = Device::Cpu;
+
+    // Latents with high batch variance (std > 1.0) -> Loss should be zero or negligible
+    let z_healthy = (Tensor::randn(0.0f32, 2.0f32, (8, 64), &device).expect("healthy") * 2.0).expect("scale");
+    let loss_healthy = compute_latent_variance_loss(&z_healthy, 1.0)
+        .expect("compute_latent_variance_loss healthy");
+    let loss_h_val: f32 = loss_healthy.to_scalar().expect("loss_h_val");
+    assert_eq!(loss_h_val, 0.0, "Healthy variance should produce 0 hinge penalty");
+
+    // Latents collapsed to near-zero variance (std << 1.0) -> Loss must be strictly positive
+    let z_collapsed = Tensor::zeros((8, 64), DType::F32, &device).expect("collapsed");
+    let loss_collapsed = compute_latent_variance_loss(&z_collapsed, 1.0)
+        .expect("compute_latent_variance_loss collapsed");
+    let loss_c_val: f32 = loss_collapsed.to_scalar().expect("loss_c_val");
+    assert!((loss_c_val - 0.9801).abs() < 1e-3, "Zero std should yield hinge penalty ≈ (1.0 - sqrt(eps))^2, got {}", loss_c_val);
+
+    // Backward pass check
+    let _ = loss_collapsed.backward().expect("Backward pass through latent variance loss must succeed");
+}
+
+#[test]
+fn test_router_entropy_and_perplexity_metrics() {
+    let device = Device::Cpu;
+
+    // Case 1: Perfectly uniform routing across 8 experts (p_i = 1/8 = 0.125)
+    // Max entropy H = ln(8) ≈ 2.0794, Perplexity = exp(H) = 8.0
+    let uniform_probs = (Tensor::ones((4, 8), DType::F32, &device).expect("ones") / 8.0).expect("div");
+    let (loss_uniform, perp_uniform, dead_uniform) = compute_router_entropy_loss(&uniform_probs)
+        .expect("compute_router_entropy_loss uniform");
+
+    let _loss_u_val: f32 = loss_uniform.to_scalar().expect("loss_u_val");
+    assert!((perp_uniform - 8.0).abs() < 0.05, "Uniform routing must have Perplexity ≈ 8.0, got {}", perp_uniform);
+    assert_eq!(dead_uniform, 0, "Uniform routing must have 0 dead experts");
+
+    // Case 2: Fully collapsed router (Expert 0 has probability 1.0, others 0.0)
+    // Entropy H = 0.0, Perplexity = exp(0) = 1.0, 7 dead experts
+    let mut collapsed_data = vec![0.0f32; 4 * 8];
+    for b in 0..4 {
+        collapsed_data[b * 8] = 1.0;
+    }
+    let collapsed_probs = Tensor::from_vec(collapsed_data, (4, 8), &device).expect("collapsed_probs");
+    let (loss_collapsed, perp_collapsed, dead_collapsed) = compute_router_entropy_loss(&collapsed_probs)
+        .expect("compute_router_entropy_loss collapsed");
+
+    let _loss_c_val: f32 = loss_collapsed.to_scalar().expect("loss_c_val");
+    assert!((perp_collapsed - 1.0).abs() < 0.1, "Collapsed router must have Perplexity ≈ 1.0, got {}", perp_collapsed);
+    assert_eq!(dead_collapsed, 7, "Single expert active means 7 dead experts");
+}
+
+#[test]
+fn test_trajectory_diversity_loss() {
+    let device = Device::Cpu;
+
+    // Mode-collapsed trajectories (all batch elements predict identical trajectory)
+    let z_collapsed = Tensor::ones((8, 64), DType::F32, &device).expect("collapsed traj");
+    let loss_collapsed = compute_trajectory_diversity_loss(&z_collapsed, 0.5)
+        .expect("compute_trajectory_diversity_loss collapsed");
+
+    let loss_c_val: f32 = loss_collapsed.to_scalar().expect("scalar");
+    assert!((loss_c_val - 0.2401).abs() < 1e-3, "Collapsed traj should produce penalty ≈ (min_std - sqrt(eps))^2, got {}", loss_c_val);
+
+    // Diverse trajectories (high standard deviation >> 0.5 across all dimensions)
+    let z_diverse = (Tensor::randn(0.0f32, 2.0f32, (16, 64), &device).expect("diverse traj") * 3.0).expect("scale");
+    let loss_diverse = compute_trajectory_diversity_loss(&z_diverse, 0.5)
+        .expect("compute_trajectory_diversity_loss diverse");
+
+    let loss_d_val: f32 = loss_diverse.to_scalar().expect("scalar");
+    assert!(loss_d_val < 1e-4, "High variance batch should produce near-zero diversity loss, got {}", loss_d_val);
+}

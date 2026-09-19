@@ -6,6 +6,7 @@
 
 use anyhow::Result;
 use candle_core::{DType, Tensor};
+use serde::{Deserialize, Serialize};
 
 use super::*;
 
@@ -201,13 +202,18 @@ pub fn compute_expert_diversity_loss(prob_history: &[Tensor]) -> Result<Tensor> 
 /// enabling sub-millisecond, 1-step Euler inference on edge / WebGPU devices.
 
 /// Beta-VAE loss: Reconstruction MSE + $\beta \cdot \text{KL}(q(z|x) \| p(z))$.
-pub fn compute_beta_vae_loss(
+/// Beta-VAE loss with Free-Bits thresholding to prevent posterior collapse:
+/// For each latent dimension d, enforces KL_d >= free_bits nats.
+/// Below free_bits, the gradient is 0, guaranteeing the latent code cannot be crushed into white noise.
+/// Also computes the active latent units count (dimensions where Var_B(mu) > 0.01).
+pub fn compute_beta_vae_loss_with_free_bits(
     pred_bands: &Tensor,
     target_bands: &Tensor,
     mu: &Tensor,
     logvar: &Tensor,
     beta: f64,
-) -> Result<(Tensor, Tensor, Tensor)> {
+    free_bits: f64,
+) -> Result<(Tensor, Tensor, Tensor, usize)> {
     let recon_diff = (pred_bands - target_bands)?;
     let recon_loss = recon_diff.sqr()?.mean_all()?;
 
@@ -216,12 +222,57 @@ pub fn compute_beta_vae_loss(
     let mu_sq = mu.sqr()?;
     let var = logvar_clamped.exp()?;
     let ones = Tensor::ones(logvar.shape(), DType::F32, logvar.device())?;
-    let inner = (((&ones + &logvar_clamped)? - &mu_sq)? - &var)?;
-    let kl = (inner.mean_all()? * -0.5)?;
+    // KL element-wise: 0.5 * (mu^2 + exp(logvar) - 1 - logvar)
+    let inner = (((&mu_sq + &var)? - &ones)? - &logvar_clamped)?;
+    let kl_elements = (&inner * 0.5)?;
 
-    let total = (&recon_loss + (&kl * beta)?)?;
+    // Mean KL per latent dimension across batch: [D]
+    let kl_per_dim = kl_elements.mean(0)?;
+
+    // Free-bits floor
+    let kl_loss = if free_bits > 1e-6 {
+        let fb = Tensor::full(free_bits as f32, kl_per_dim.shape(), kl_per_dim.device())?;
+        let excess = (kl_per_dim.broadcast_sub(&fb))?.relu()?;
+        (&excess + &fb)?.mean_all()?
+    } else {
+        kl_per_dim.mean_all()?
+    };
+
+    // Calculate active latent units (Var_B(mu) > 0.01)
+    let active_units = if mu.dim(0)? > 1 {
+        let b = mu.dim(0)? as f64;
+        let mean_mu = mu.mean_keepdim(0)?;
+        let diff = mu.broadcast_sub(&mean_mu)?;
+        let var_mu = (diff.sqr()?.sum_keepdim(0)? / (b - 1.0))?;
+        let var_vec = var_mu.flatten_all()?.to_vec1::<f32>()?;
+        var_vec.iter().filter(|&&v| v > 0.01).count()
+    } else {
+        LATENT_DIM
+    };
+
+    let total = (&recon_loss + (&kl_loss * beta)?)?;
+    Ok((total, recon_loss, kl_loss, active_units))
+}
+
+/// Backward-compatible Beta-VAE loss wrapper (zero free-bits threshold).
+pub fn compute_beta_vae_loss(
+    pred_bands: &Tensor,
+    target_bands: &Tensor,
+    mu: &Tensor,
+    logvar: &Tensor,
+    beta: f64,
+) -> Result<(Tensor, Tensor, Tensor)> {
+    let (total, recon_loss, kl, _active) = compute_beta_vae_loss_with_free_bits(
+        pred_bands,
+        target_bands,
+        mu,
+        logvar,
+        beta,
+        0.0,
+    )?;
     Ok((total, recon_loss, kl))
 }
+
 
 /// Hardware-in-the-Loop (HWIL) governor budget penalty.
 pub fn compute_hwil_penalty(
@@ -302,4 +353,96 @@ pub fn compute_hierarchical_multi_res_loss(
     let l_total = ((&l_fine + &l_energy)? * 0.5)?;
     Ok((l_total, l_fine, l_energy))
 }
+
+/// VICReg-style Latent Variance Hinge Loss preventing dimensional collapse:
+/// L_var = 1/D sum_d relu(target_std - sqrt(Var_B(z_d) + eps))^2.
+/// Enforces that all D latent channels maintain at least `target_std` (default 1.0)
+/// spread across batch samples, preventing low-rank subspace collapse.
+pub fn compute_latent_variance_loss(z: &Tensor, target_std: f64) -> Result<Tensor> {
+    let batch_size = z.dim(0)?;
+    if batch_size < 2 {
+        return Ok(Tensor::zeros((), DType::F32, z.device())?);
+    }
+    let mean = z.mean_keepdim(0)?;
+    let diff = z.broadcast_sub(&mean)?;
+    let var = (diff.sqr()?.sum_keepdim(0)? / ((batch_size - 1) as f64))?;
+    let std = (var + 1e-4)?.sqrt()?;
+    let target_t = Tensor::full(target_std as f32, std.shape(), std.device())?;
+    let hinge = (target_t - std)?.relu()?;
+    let loss = hinge.sqr()?.mean_all()?;
+    Ok(loss)
+}
+
+/// Router Shannon Entropy Loss & Perplexity Metric preventing MoE winner-take-all collapse:
+/// Evaluates negative entropy across batch-averaged expert probabilities:
+/// L_entropy = sum_e P_e * log(P_e + eps).
+/// Minimizing this maximizes router entropy H(P).
+/// Returns: (entropy_loss_tensor, perplexity_scalar, dead_expert_count).
+pub fn compute_router_entropy_loss(router_probs: &Tensor) -> Result<(Tensor, f32, usize)> {
+    let mean_probs = router_probs.mean(0)?; // [NUM_EXPERTS]
+    let eps = 1e-8f32;
+    let probs_vec = mean_probs.to_vec1::<f32>()?;
+
+    let mut entropy = 0.0f32;
+    let mut dead_count = 0usize;
+    let dead_threshold = 0.10f32 / (NUM_EXPERTS as f32); // 0.0125 (under 1.25%)
+    for &p in &probs_vec {
+        if p > eps {
+            entropy -= p * (p + eps).ln();
+        }
+        if p < dead_threshold {
+            dead_count += 1;
+        }
+    }
+    let perplexity = entropy.exp().clamp(1.0, NUM_EXPERTS as f32);
+
+    let log_p = (mean_probs.clone() + (eps as f64))?.log()?;
+    let neg_entropy = (mean_probs * log_p)?.sum_all()?;
+    Ok((neg_entropy, perplexity, dead_count))
+}
+
+/// Trajectory Diversity Preservation Loss preventing mode collapse:
+/// Enforces that predicted trajectory latents across different batch samples maintain
+/// non-zero batch-wise standard deviation (default min_std = 0.25).
+pub fn compute_trajectory_diversity_loss(z_pred: &Tensor, min_std: f64) -> Result<Tensor> {
+    let batch_size = z_pred.dim(0)?;
+    if batch_size < 2 {
+        return Ok(Tensor::zeros((), DType::F32, z_pred.device())?);
+    }
+    let mean = z_pred.mean_keepdim(0)?;
+    let diff = z_pred.broadcast_sub(&mean)?;
+    let var = (diff.sqr()?.sum_keepdim(0)? / ((batch_size - 1) as f64))?;
+    let std = (var + 1e-4)?.sqrt()?;
+    let min_std_t = Tensor::full(min_std as f32, std.shape(), std.device())?;
+    let penalty = (min_std_t - std)?.relu()?;
+    let loss = penalty.sqr()?.mean_all()?;
+    Ok(loss)
+}
+
+/// Live Model Health & Collapse Diagnostics snapshot.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelCollapseDiagnostics {
+    pub active_latents: usize,         // Active latent channels (out of 64) with Var > 0.01
+    pub latent_total_dim: usize,       // 64
+    pub router_perplexity: f32,       // Router effective expert diversity [1.0 .. 8.0]
+    pub dead_experts: usize,           // Experts receiving < 1.25% routing probability
+    pub trajectory_variance: f32,      // Mean standard deviation of predicted trajectories
+    pub status_code: String,           // "OPTIMAL", "POSTERIOR_RISK", "ROUTER_STARVATION", "MODE_COLLAPSE"
+    pub is_mitigating: bool,
+}
+
+impl Default for ModelCollapseDiagnostics {
+    fn default() -> Self {
+        Self {
+            active_latents: LATENT_DIM,
+            latent_total_dim: LATENT_DIM,
+            router_perplexity: NUM_EXPERTS as f32,
+            dead_experts: 0,
+            trajectory_variance: 1.0,
+            status_code: "OPTIMAL".to_string(),
+            is_mitigating: false,
+        }
+    }
+}
+
 
