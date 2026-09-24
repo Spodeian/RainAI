@@ -2849,6 +2849,8 @@ name = "inference"
 version = "0.2.0"
 dependencies = [
  "bytemuck",
+ "candle-core",
+ "candle-nn",
  "criterion",
  "futures",
  "futures-intrusive",
