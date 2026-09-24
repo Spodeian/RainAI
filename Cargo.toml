@@ -63,6 +63,8 @@ tokio = "1"
 futures = "0.3"
 futures-intrusive = "0.5"
 safetensors = "0.4"
+winit = { version = "0.30", default-features = false }
+android-activity = { version = "0.6", default-features = false, features = ["native-activity"] }
 
 [workspace.lints.rust]
 unsafe_code = "deny"

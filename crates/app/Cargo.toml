@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Application view controller, UI layout components, and state management"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [lints]
 workspace = true
 
@@ -31,8 +34,12 @@ wasm-bindgen = { workspace = true }
 web-sys = { workspace = true, features = ["Document", "Window", "HtmlCanvasElement", "Element", "Blob", "BlobPropertyBag", "Url", "HtmlAnchorElement", "HtmlDocument", "Location", "AudioContext", "AudioContextOptions", "AudioBuffer", "AudioBufferSourceNode", "AudioDestinationNode", "AudioNode", "GainNode", "ScriptProcessorNode", "AudioProcessingEvent"] }
 js-sys = { workspace = true }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+[target.'cfg(not(any(target_arch = "wasm32", target_os = "android")))'.dependencies]
 eframe = { workspace = true, features = ["x11", "wayland"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+winit = { workspace = true, features = ["android-native-activity"] }
+android-activity = { workspace = true }
 
 [features]
 default = ["accesskit", "persistence", "wgpu"]

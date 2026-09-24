@@ -15,6 +15,7 @@
 - [x] Automated Cross-Framework Parity Test Suite (`parity_candle_pytorch.rs`).
 - [x] Runge-Kutta 4th Order (RK4) continuous trajectory flow integrator.
 - [x] Formal Data Provenance & Bibliography Register (`DATA_BIBLIOGRAPHY.md`).
+- [x] Universal `cargo-ndk` Android mobile deployment pipeline (`scripts/build-android.ps1`, `scripts/build-android.sh`).
 
 ---
 

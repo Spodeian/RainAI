@@ -435,3 +435,17 @@ impl eframe::App for TemplateApp {
         components::modals::render_warning_banners(self, ui.ctx());
     }
 }
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+fn android_main(app: winit::platform::android::activity::AndroidApp) {
+    use eframe::NativeOptions;
+    let mut options = NativeOptions::default();
+    options.android_app = Some(app);
+    eframe::run_native(
+        "RainAI",
+        options,
+        Box::new(|cc| Ok(Box::new(TemplateApp::new(cc)))),
+    ).unwrap();
+}
+
