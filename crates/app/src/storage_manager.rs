@@ -325,30 +325,7 @@ pub fn resolve_desktop_export_path(filename: &str) -> std::path::PathBuf {
 /// Trigger client-side text file download via Blob URL
 pub fn trigger_text_download(filename: &str, content: &str, mime_type: &str) {
     #[cfg(target_arch = "wasm32")]
-    {
-        if let Some(window) = web_sys::window() {
-            if let Some(document) = window.document() {
-                let blob_parts = js_sys::Array::new();
-                blob_parts.push(&wasm_bindgen::JsValue::from_str(content));
-                let blob_props = web_sys::BlobPropertyBag::new();
-                blob_props.set_type(mime_type);
-                if let Ok(blob) =
-                    web_sys::Blob::new_with_str_sequence_and_options(&blob_parts, &blob_props)
-                {
-                    if let Ok(url) = web_sys::Url::create_object_url_with_blob(&blob) {
-                        if let Ok(element) = document.create_element("a") {
-                            if let Ok(anchor) = element.dyn_into::<web_sys::HtmlAnchorElement>() {
-                                anchor.set_href(&url);
-                                anchor.set_download(filename);
-                                anchor.click();
-                                let _ = web_sys::Url::revoke_object_url(&url);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    spodeian_web_utils::trigger_text_download(filename, content, mime_type);
     #[cfg(not(target_arch = "wasm32"))]
     {
         let _ = mime_type;
@@ -363,31 +340,7 @@ pub fn trigger_text_download(filename: &str, content: &str, mime_type: &str) {
 /// Trigger client-side binary file download (e.g. Compressed BSON) via Blob URL
 pub fn trigger_binary_download(filename: &str, bytes: &[u8], mime_type: &str) {
     #[cfg(target_arch = "wasm32")]
-    {
-        if let Some(window) = web_sys::window() {
-            if let Some(document) = window.document() {
-                let uint8_array = js_sys::Uint8Array::from(bytes);
-                let blob_parts = js_sys::Array::new();
-                blob_parts.push(&uint8_array.buffer());
-                let blob_props = web_sys::BlobPropertyBag::new();
-                blob_props.set_type(mime_type);
-                if let Ok(blob) =
-                    web_sys::Blob::new_with_u8_array_sequence_and_options(&blob_parts, &blob_props)
-                {
-                    if let Ok(url) = web_sys::Url::create_object_url_with_blob(&blob) {
-                        if let Ok(element) = document.create_element("a") {
-                            if let Ok(anchor) = element.dyn_into::<web_sys::HtmlAnchorElement>() {
-                                anchor.set_href(&url);
-                                anchor.set_download(filename);
-                                anchor.click();
-                                let _ = web_sys::Url::revoke_object_url(&url);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    spodeian_web_utils::trigger_binary_download(filename, bytes, mime_type);
     #[cfg(not(target_arch = "wasm32"))]
     {
         let _ = mime_type;

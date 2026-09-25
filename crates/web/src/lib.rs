@@ -16,13 +16,8 @@ use shared::rain::{QualityTier, CONDITION_DIM};
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(start)]
 pub fn main() {
-    // Redirect panic logs to browser developer console
-    console_error_panic_hook::set_once();
-    tracing_subscriber::fmt()
-        .with_writer(tracing_web::MakeConsoleWriter)
-        .without_time()
-        .with_ansi(false)
-        .init();
+    // Universal telemetry & logging initialization
+    spodeian_telemetry::init_default();
 
     // Spawn the async eframe WebRunner natively
     wasm_bindgen_futures::spawn_local(async {

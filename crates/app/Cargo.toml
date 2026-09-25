@@ -30,6 +30,8 @@ thiserror = { workspace = true }
 ron = { workspace = true }
 spodeian-cache = { workspace = true }
 spodeian-tokens = { workspace = true }
+spodeian-ui = { workspace = true }
+spodeian-web-utils = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { workspace = true }

@@ -17,6 +17,8 @@ bson = { workspace = true }
 miniz_oxide = { workspace = true }
 base64 = { workspace = true }
 thiserror = { workspace = true }
+spodeian-export = { workspace = true }
+spodeian-tokens = { workspace = true }
 
 [features]
 default = ["std"]

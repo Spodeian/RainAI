@@ -245,6 +245,8 @@ dependencies = [
  "shared",
  "spodeian-cache",
  "spodeian-tokens",
+ "spodeian-ui",
+ "spodeian-web-utils",
  "thiserror 2.0.20",
  "tracing",
  "tracing-subscriber",
@@ -1409,6 +1411,7 @@ dependencies = [
  "app",
  "eframe",
  "mimalloc",
+ "spodeian-telemetry",
  "tracing",
  "tracing-subscriber",
 ]
@@ -5197,6 +5200,8 @@ dependencies = [
  "miniz_oxide",
  "serde",
  "serde_json",
+ "spodeian-export",
+ "spodeian-tokens",
  "thiserror 2.0.20",
 ]
 
@@ -5425,11 +5430,51 @@ dependencies = [
 ]
 
 [[package]]
+name = "spodeian-export"
+version = "0.1.0"
+dependencies = [
+ "bson",
+ "miniz_oxide",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "spodeian-telemetry"
+version = "0.1.0"
+dependencies = [
+ "console_error_panic_hook",
+ "tracing",
+ "tracing-subscriber",
+ "tracing-web",
+]
+
+[[package]]
 name = "spodeian-tokens"
 version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "spodeian-ui"
+version = "0.1.0"
+dependencies = [
+ "egui",
+ "serde",
+ "spodeian-tokens",
+]
+
+[[package]]
+name = "spodeian-web-utils"
+version = "0.1.0"
+dependencies = [
+ "js-sys",
+ "tracing",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
@@ -6510,6 +6555,7 @@ dependencies = [
  "eframe",
  "inference",
  "shared",
+ "spodeian-telemetry",
  "tracing",
  "tracing-subscriber",
  "tracing-web",
