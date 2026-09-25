@@ -25,6 +25,8 @@ audio = { path = "crates/audio" }
 inference = { path = "crates/inference" }
 app = { path = "crates/app" }
 utilities = { path = "crates/utilities" }
+spodeian-cache = { path = "../spodeian-core/crates/spodeian-cache" }
+spodeian-tokens = { path = "../spodeian-core/crates/spodeian-tokens" }
 candle-core = "0.11"
 candle-nn = "0.11"
 criterion = "0.5"
