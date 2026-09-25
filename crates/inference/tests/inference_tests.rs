@@ -239,4 +239,26 @@ fn test_pre_generated_steps_alterable() {
     assert_eq!(runner.pre_generated_steps(), 5);
 }
 
+#[test]
+fn test_rk4_continuous_flow_trajectory_solver() {
+    use inference::kernels::Rk4FlowSolver;
+
+    // Test ODE: dx/dt = -2 * x with x(0) = 1.0.
+    // Analytical solution: x(t) = exp(-2 * t). At t = 1.0, x(1.0) = exp(-2) ≈ 0.135335.
+    let x0 = vec![1.0f32];
+    let num_steps = 20;
+
+    let final_x = Rk4FlowSolver::solve_trajectory(&x0, num_steps, |x, _t| {
+        vec![-2.0 * x[0]]
+    });
+
+    let expected = (-2.0f32).exp();
+    assert!(
+        (final_x[0] - expected).abs() < 1e-4,
+        "RK4 numerical solution was {}, expected {}",
+        final_x[0],
+        expected
+    );
+}
+
 

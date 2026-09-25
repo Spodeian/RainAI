@@ -25,7 +25,9 @@ pub mod decoder;
 pub mod engine;
 pub mod export;
 pub mod history;
+pub mod hrtf_sofa;
 pub mod meta_governor;
+pub mod noise_masking;
 pub mod physical;
 pub mod procedural;
 
@@ -34,7 +36,9 @@ pub use decoder::*;
 pub use engine::*;
 pub use export::*;
 pub use history::*;
+pub use hrtf_sofa::*;
 pub use meta_governor::*;
+pub use noise_masking::*;
 pub use physical::*;
 pub use procedural::*;
 
