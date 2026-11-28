@@ -302,8 +302,44 @@ impl TemplateApp {
             app.ensure_audio_engine();
         }
 
+        // In the browser the IndexedDB copy follows a moment later (see `apply_storage_events`).
+        open_web_store(&cc.egui_ctx);
         info!("RainAI Studio ready.");
         app
+    }
+
+    /// Applies results from the browser store: the state loaded at startup, and the
+    /// outcome of each finished save. Does nothing on native.
+    fn apply_storage_events(&mut self) {
+        match take_loaded_web_state() {
+            Some(Some(mut loaded)) => {
+                // As in `new`: the separately saved settings win, and playback stays as the
+                // user has it now (browsers need a gesture to start audio anyway).
+                loaded.rain.sound_layers = self.settings.layers;
+                loaded.rain.evolve_enabled = self.settings.evolve;
+                loaded.rain.optimization_profile = self.settings.profile;
+                loaded.rain.quality_tier = self.state.rain.quality_tier;
+                loaded.rain.is_playing = self.state.rain.is_playing;
+                self.state = loaded;
+                self.storage_diag.backend = StorageBackend::IndexedDb;
+                self.storage_diag.idb_active = true;
+            }
+            // Nothing in IndexedDB yet: move whatever loaded at startup into it.
+            Some(None) => self.persist_state(),
+            None => {}
+        }
+        match take_web_save_outcome() {
+            Some(Ok(())) => {
+                self.storage_diag.backend = StorageBackend::IndexedDb;
+                self.storage_diag.idb_active = true;
+                self.storage_diag.quota_exceeded = false;
+            }
+            Some(Err(message)) => {
+                tracing::error!("{message}");
+                self.storage_diag.quota_exceeded = message.contains("QuotaExceeded");
+            }
+            None => {}
+        }
     }
 
     pub fn persist_state(&mut self) {
@@ -337,6 +373,10 @@ impl TemplateApp {
         mark_first_launch_done(None);
 
         if let Ok(json_str) = serde_json::to_string(&self.state) {
+            // Browser: queued for IndexedDB; the result arrives in `apply_storage_events`.
+            if queue_web_save(&json_str) {
+                return;
+            }
             match save_state_multi_tier(DEDICATED_STORAGE_KEY, &json_str) {
                 Ok(backend) => {
                     self.storage_diag.backend = backend;
@@ -513,16 +553,21 @@ impl eframe::App for TemplateApp {
         save_session_state(Some(storage), &session);
         mark_first_launch_done(Some(storage));
 
-        eframe::set_value(storage, eframe::APP_KEY, &self.state);
-
-        if let Ok(json_str) = serde_json::to_string(&self.state) {
-            storage.set_string(DEDICATED_STORAGE_KEY, json_str);
+        // Native: the full state goes into eframe's storage file. The browser keeps it in
+        // IndexedDB instead, so a local storage copy would only duplicate it.
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            eframe::set_value(storage, eframe::APP_KEY, &self.state);
+            if let Ok(json_str) = serde_json::to_string(&self.state) {
+                storage.set_string(DEDICATED_STORAGE_KEY, json_str);
+            }
         }
         storage.flush();
         self.persist_state();
     }
 
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.apply_storage_events();
         self.apply_theme(ctx);
 
         let egui_theme = match self.state.config.theme {

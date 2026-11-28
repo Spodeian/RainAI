@@ -246,6 +246,7 @@ dependencies = [
  "serde_json",
  "shared",
  "spodeian-cache",
+ "spodeian-persist",
  "spodeian-tokens",
  "spodeian-ui",
  "spodeian-web-utils",
@@ -273,7 +274,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "parking_lot",
  "percent-encoding",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
  "x11rb",
 ]
 
@@ -1772,7 +1773,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2802,7 +2803,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi",
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3422,7 +3423,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4327,7 +4328,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4795,7 +4796,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5232,7 +5233,7 @@ dependencies = [
 [[package]]
 name = "sml-runtime"
 version = "0.2.0"
-source = "git+https://github.com/Spodeian/spodeian-core?tag=v3.3.0#2dac8ec7c59350d35772b13385fa9aeebd84c3d6"
+source = "git+https://github.com/Spodeian/spodeian-core?tag=v3.4.0#afa786e854e46854c12a55e21bbb324f446d0f4a"
 dependencies = [
  "ahash",
  "byteorder",
@@ -5291,7 +5292,7 @@ dependencies = [
 [[package]]
 name = "spodeian-audio"
 version = "0.1.0"
-source = "git+https://github.com/Spodeian/spodeian-core?tag=v3.3.0#2dac8ec7c59350d35772b13385fa9aeebd84c3d6"
+source = "git+https://github.com/Spodeian/spodeian-core?tag=v3.4.0#afa786e854e46854c12a55e21bbb324f446d0f4a"
 dependencies = [
  "serde",
  "thiserror 2.0.20",
@@ -5300,7 +5301,7 @@ dependencies = [
 [[package]]
 name = "spodeian-cache"
 version = "1.3.0"
-source = "git+https://github.com/Spodeian/spodeian-core?tag=v3.3.0#2dac8ec7c59350d35772b13385fa9aeebd84c3d6"
+source = "git+https://github.com/Spodeian/spodeian-core?tag=v3.4.0#afa786e854e46854c12a55e21bbb324f446d0f4a"
 dependencies = [
  "base64 0.22.1",
  "js-sys",
@@ -5317,7 +5318,7 @@ dependencies = [
 [[package]]
 name = "spodeian-export"
 version = "2.0.0"
-source = "git+https://github.com/Spodeian/spodeian-core?tag=v3.3.0#2dac8ec7c59350d35772b13385fa9aeebd84c3d6"
+source = "git+https://github.com/Spodeian/spodeian-core?tag=v3.4.0#afa786e854e46854c12a55e21bbb324f446d0f4a"
 dependencies = [
  "bson",
  "miniz_oxide",
@@ -5329,15 +5330,32 @@ dependencies = [
 [[package]]
 name = "spodeian-parallel"
 version = "1.0.0"
-source = "git+https://github.com/Spodeian/spodeian-core?tag=v3.3.0#2dac8ec7c59350d35772b13385fa9aeebd84c3d6"
+source = "git+https://github.com/Spodeian/spodeian-core?tag=v3.4.0#afa786e854e46854c12a55e21bbb324f446d0f4a"
 dependencies = [
  "rayon",
 ]
 
 [[package]]
+name = "spodeian-persist"
+version = "0.1.2"
+source = "git+https://github.com/Spodeian/spodeian-core?tag=v3.4.0#afa786e854e46854c12a55e21bbb324f446d0f4a"
+dependencies = [
+ "js-sys",
+ "serde",
+ "serde_json",
+ "spodeian-cache",
+ "spodeian-web-utils",
+ "thiserror 2.0.20",
+ "tracing",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
 name = "spodeian-provenance"
 version = "0.1.0"
-source = "git+https://github.com/Spodeian/spodeian-core?tag=v3.3.0#2dac8ec7c59350d35772b13385fa9aeebd84c3d6"
+source = "git+https://github.com/Spodeian/spodeian-core?tag=v3.4.0#afa786e854e46854c12a55e21bbb324f446d0f4a"
 dependencies = [
  "serde",
  "serde_json",
@@ -5347,7 +5365,7 @@ dependencies = [
 [[package]]
 name = "spodeian-telemetry"
 version = "1.1.0"
-source = "git+https://github.com/Spodeian/spodeian-core?tag=v3.3.0#2dac8ec7c59350d35772b13385fa9aeebd84c3d6"
+source = "git+https://github.com/Spodeian/spodeian-core?tag=v3.4.0#afa786e854e46854c12a55e21bbb324f446d0f4a"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",
@@ -5361,7 +5379,7 @@ dependencies = [
 [[package]]
 name = "spodeian-tokens"
 version = "1.1.0"
-source = "git+https://github.com/Spodeian/spodeian-core?tag=v3.3.0#2dac8ec7c59350d35772b13385fa9aeebd84c3d6"
+source = "git+https://github.com/Spodeian/spodeian-core?tag=v3.4.0#afa786e854e46854c12a55e21bbb324f446d0f4a"
 dependencies = [
  "serde",
  "serde_json",
@@ -5370,7 +5388,7 @@ dependencies = [
 [[package]]
 name = "spodeian-ui"
 version = "1.0.0"
-source = "git+https://github.com/Spodeian/spodeian-core?tag=v3.3.0#2dac8ec7c59350d35772b13385fa9aeebd84c3d6"
+source = "git+https://github.com/Spodeian/spodeian-core?tag=v3.4.0#afa786e854e46854c12a55e21bbb324f446d0f4a"
 dependencies = [
  "egui",
  "serde",
@@ -5383,7 +5401,7 @@ dependencies = [
 [[package]]
 name = "spodeian-web-utils"
 version = "1.1.0"
-source = "git+https://github.com/Spodeian/spodeian-core?tag=v3.3.0#2dac8ec7c59350d35772b13385fa9aeebd84c3d6"
+source = "git+https://github.com/Spodeian/spodeian-core?tag=v3.4.0#afa786e854e46854c12a55e21bbb324f446d0f4a"
 dependencies = [
  "base64 0.22.1",
  "js-sys",
@@ -5759,7 +5777,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6872,7 +6890,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

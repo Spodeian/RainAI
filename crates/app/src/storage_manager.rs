@@ -624,3 +624,88 @@ pub fn set_screen_wake_lock(active: bool) {
         let _ = active;
     }
 }
+
+// ---------------------------------------------------------------------------
+// Browser persistence: the whole state is one IndexedDB record, loaded once at startup
+// and saved in the background (`spodeian_persist::WebStateStore`). Earlier versions
+// saved large states only to IndexedDB but never read them back, so a reload restored an
+// older local storage copy.
+// ---------------------------------------------------------------------------
+
+#[cfg(target_arch = "wasm32")]
+thread_local! {
+    static WEB_STORE: std::cell::RefCell<Option<spodeian_persist::WebStateStore>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Starts loading the saved state from IndexedDB (browser only). The result arrives
+/// through [`take_loaded_web_state`]; `ctx` is repainted when it does.
+pub fn open_web_store(ctx: &eframe::egui::Context) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let ctx = ctx.clone();
+        let legacy = spodeian_persist::LegacyLocations {
+            local_storage_keys: vec![DEDICATED_STORAGE_KEY.into(), eframe::APP_KEY.into()],
+            // The old JS database (`rainai_offline_store`) also caches model weights, so it stays.
+            databases: vec![],
+        };
+        let store = spodeian_persist::WebStateStore::open(
+            "rainai-state",
+            DEDICATED_STORAGE_KEY,
+            legacy,
+            move || ctx.request_repaint(),
+        );
+        WEB_STORE.with(|s| *s.borrow_mut() = Some(store));
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    let _ = ctx;
+}
+
+/// The state loaded from IndexedDB, once: `Some(None)` means nothing was saved there yet
+/// (save the current state to move it in). Always `None` on native.
+pub fn take_loaded_web_state() -> Option<Option<shared::AppState>> {
+    #[cfg(target_arch = "wasm32")]
+    return WEB_STORE
+        .with(|s| s.borrow().as_ref().and_then(|store| store.take_loaded()))
+        .map(|saved| {
+            saved.and_then(|json| {
+                deserialize_app_state(&json)
+                    .map_err(|e| tracing::warn!("Ignoring unreadable saved state: {e}"))
+                    .ok()
+            })
+        });
+    #[cfg(not(target_arch = "wasm32"))]
+    None
+}
+
+/// The result of the most recent finished browser save, once: `Ok(())` when IndexedDB
+/// confirmed it. Always `None` on native.
+pub fn take_web_save_outcome() -> Option<Result<(), String>> {
+    #[cfg(target_arch = "wasm32")]
+    return WEB_STORE
+        .with(|s| s.borrow().as_ref().and_then(|store| store.take_outcome()))
+        .map(|outcome| match outcome {
+            spodeian_persist::SaveOutcome::Saved => Ok(()),
+            spodeian_persist::SaveOutcome::Failed(message) => Err(message),
+            other => Err(format!("{other:?}")),
+        });
+    #[cfg(not(target_arch = "wasm32"))]
+    None
+}
+
+/// Queues `json` to be written to IndexedDB. Returns `false` (doing nothing) on native or
+/// before [`open_web_store`] ran, so the caller can fall back to its native save.
+pub fn queue_web_save(json: &str) -> bool {
+    #[cfg(target_arch = "wasm32")]
+    return WEB_STORE.with(|s| {
+        s.borrow().as_ref().is_some_and(|store| {
+            store.queue_save(json.to_string());
+            true
+        })
+    });
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = json;
+        false
+    }
+}

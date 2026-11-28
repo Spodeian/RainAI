@@ -29,6 +29,7 @@ miniz_oxide = { workspace = true }
 base64 = { workspace = true }
 thiserror = { workspace = true }
 ron = { workspace = true }
+spodeian-persist = { workspace = true }
 spodeian-cache = { workspace = true }
 spodeian-tokens = { workspace = true }
 spodeian-ui = { workspace = true }

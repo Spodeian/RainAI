@@ -25,17 +25,18 @@ audio = { path = "crates/audio" }
 inference = { path = "crates/inference" }
 app = { path = "crates/app" }
 utilities = { path = "crates/utilities" }
-spodeian-cache = { git = "https://github.com/Spodeian/spodeian-core", tag = "v3.3.0", version = "^1.1.0" }
-spodeian-tokens = { git = "https://github.com/Spodeian/spodeian-core", tag = "v3.3.0", version = "^1.1.0" }
-spodeian-telemetry = { git = "https://github.com/Spodeian/spodeian-core", tag = "v3.3.0", version = "^1.1.0" }
-spodeian-export = { git = "https://github.com/Spodeian/spodeian-core", tag = "v3.3.0", version = "^2.0.0" }
-spodeian-web-utils = { git = "https://github.com/Spodeian/spodeian-core", tag = "v3.3.0", version = "^1.1.0" }
-spodeian-ui = { git = "https://github.com/Spodeian/spodeian-core", tag = "v3.3.0", version = "^1.0.0" }
-sml-runtime = { git = "https://github.com/Spodeian/spodeian-core", tag = "v3.3.0", version = "^0.2.0" }
-spodeian-parallel = { git = "https://github.com/Spodeian/spodeian-core", tag = "v3.3.0", version = "^1.0.0" }
-spodeian-core = { git = "https://github.com/Spodeian/spodeian-core", tag = "v3.3.0", version = "^3.0.0" }
-spodeian-provenance = { git = "https://github.com/Spodeian/spodeian-core", tag = "v3.3.0" }
-spodeian-audio = { git = "https://github.com/Spodeian/spodeian-core", tag = "v3.3.0" }
+spodeian-cache = { git = "https://github.com/Spodeian/spodeian-core", tag = "v3.4.0", version = "^1.1.0" }
+spodeian-tokens = { git = "https://github.com/Spodeian/spodeian-core", tag = "v3.4.0", version = "^1.1.0" }
+spodeian-telemetry = { git = "https://github.com/Spodeian/spodeian-core", tag = "v3.4.0", version = "^1.1.0" }
+spodeian-export = { git = "https://github.com/Spodeian/spodeian-core", tag = "v3.4.0", version = "^2.0.0" }
+spodeian-persist = { git = "https://github.com/Spodeian/spodeian-core", tag = "v3.4.0", version = "^0.1.2" }
+spodeian-web-utils = { git = "https://github.com/Spodeian/spodeian-core", tag = "v3.4.0", version = "^1.1.0" }
+spodeian-ui = { git = "https://github.com/Spodeian/spodeian-core", tag = "v3.4.0", version = "^1.0.0" }
+sml-runtime = { git = "https://github.com/Spodeian/spodeian-core", tag = "v3.4.0", version = "^0.2.0" }
+spodeian-parallel = { git = "https://github.com/Spodeian/spodeian-core", tag = "v3.4.0", version = "^1.0.0" }
+spodeian-core = { git = "https://github.com/Spodeian/spodeian-core", tag = "v3.4.0", version = "^3.0.0" }
+spodeian-provenance = { git = "https://github.com/Spodeian/spodeian-core", tag = "v3.4.0" }
+spodeian-audio = { git = "https://github.com/Spodeian/spodeian-core", tag = "v3.4.0" }
 
 candle-core = "0.11"
 candle-nn = "0.11"
