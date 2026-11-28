@@ -541,8 +541,17 @@ pub fn save_state_multi_tier(key: &str, json_str: &str) -> Result<StorageBackend
     #[cfg(not(target_arch = "wasm32"))]
     {
         let cas_dir = std::env::temp_dir().join("rainai_cas_store");
-        if let Ok(cas) = ContentAddressedStorage::new(&cas_dir) {
-            let _ = cas.put(json_str.as_bytes());
+        // One named entry per key, with superseded copies swept, so repeated saves replace
+        // the state instead of adding a file each time.
+        if let Ok(cas) = ContentAddressedStorage::new(&cas_dir)
+            && cas.put_named(key, json_str.as_bytes()).is_ok()
+        {
+            if let Err(e) = cas.collect_garbage() {
+                tracing::warn!(
+                    "Could not remove superseded saves in {}: {e}",
+                    cas_dir.display()
+                );
+            }
             return Ok(StorageBackend::NativeCas);
         }
     }
